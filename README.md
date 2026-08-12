@@ -92,6 +92,7 @@ The remaining work is moving the two AREDN systems onto their public addresses. 
 | [docs/operations.md](docs/operations.md) | Running it day to day: health checks, consoles, recovery, troubleshooting |
 | [docs/test-procedure.md](docs/test-procedure.md) | Repeatable tests proving open paths work and closed paths do not |
 | [docs/migration.md](docs/migration.md) | Moving each AREDN system onto its public address |
+| [docs/tunnels.md](docs/tunnels.md) | Tunnel inventory, what each link needs, and the move plan |
 
 ## 🔢 Address plan
 
