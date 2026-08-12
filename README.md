@@ -113,7 +113,6 @@ Only these. Everything else inbound is dropped without a reply.
 |---|---|---|---|
 | `44.xx.xx.xx` | UDP | 6526-6550 | AREDN supernode tunnels |
 | `44.xx.xx.xx` | UDP | 5525-5570 | AREDN WireGuard tunnels |
-| `44.xx.xx.xx` | TCP | 5525 | AREDN legacy vtun |
 
 The router itself answers nothing on VLAN 44 or through the tunnel — no SSH, no WinBox, no
 DNS, no web interface.
