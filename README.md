@@ -79,10 +79,12 @@ still allowed, because only *new* connections are blocked.
 | Allocation | `44.xx.xx.xx/28`, routed by the gateway and confirmed arriving |
 | VLAN 44 | created, router holds `44.xx.xx.xx` |
 | Firewall | inbound accepts and DMZ isolation in place, verified by test |
-| AREDN systems | still on `<node-address>` / `<node-address>` behind port forwards |
+| AREDN-local | on `44.xx.xx.xx` |
+| Supernode / tunnel server | on `<node-address>` / `<node-address>` behind port forwards |
 
-The remaining work is moving the two AREDN systems onto their public addresses. See
-[docs/migration.md](docs/migration.md).
+The remaining work is moving the supernode and tunnel server onto their public addresses. See
+[docs/migration.md](docs/migration.md), and [docs/tunnels.md](docs/tunnels.md) for the
+baseline a move has to match.
 
 ## 📚 Documentation
 
@@ -101,6 +103,7 @@ The remaining work is moving the two AREDN systems onto their public addresses. 
 | `44.xx.xx.xx` | Router, gateway on `vlan-44-AMPR` |
 | `44.xx.xx.xx` | AREDN supernode, Proxmox VM 105 |
 | `44.xx.xx.xx` | AREDN tunnel server, Proxmox VM 104 |
+| `44.xx.xx.xx` | AREDN-local, Proxmox VM 103 |
 | `44.xx.xx.xx`–`.94` | Free |
 
 `44.xx.xx.xx` is the network address and `.95` the broadcast address.
@@ -146,6 +149,12 @@ settings, or handle it on the router instead.
 **A node is unreachable after a change.** Every AREDN VM has a serial console on the
 Proxmox host, and a snapshot taken before a change restores both the machine settings and
 the disk. See [docs/operations.md](docs/operations.md).
+
+**Machines on the home network cannot reach 44-net.** The `defconf: masquerade` rule is
+scoped to `out-interface-list=WAN`, and the gateway tunnel is in no interface list, so LAN
+traffic enters the tunnel still carrying a private source address and nothing can reply. Add
+a masquerade for `out-interface=wireguardPOP`. `git.ampr.org` is itself on 44-net
+(`44.1.2.69`), so it is a quick test.
 
 **AREDN tunnels connect but large transfers stall.** An AREDN tunnel carried inside this
 tunnel is wrapped twice. The outer tunnel allows 1380 bytes, leaving roughly 1300 for the
