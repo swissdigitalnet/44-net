@@ -1,6 +1,6 @@
 # 44-net
 
-![Status](https://img.shields.io/badge/phase%201-complete-brightgreen)
+![Status](https://img.shields.io/badge/status-parked-lightgrey)
 ![Allocation](https://img.shields.io/badge/AMPRNet-44.xx.xx.xx%2F28-blue)
 ![Router](https://img.shields.io/badge/RouterOS-7.20.1-orange)
 ![Nodes](https://img.shields.io/badge/AREDN-4.26-lightgrey)
@@ -75,16 +75,24 @@ still allowed, because only *new* connections are blocked.
 
 | | |
 |---|---|
-| Tunnel | live, `wireguardPOP`, MTU 1380 |
+| Tunnel | **disabled** — `wireguardPOP`, MTU 1380, parked |
+| AMPRNet routes | removed, so 44-net is reached over the ordinary internet |
 | Allocation | `44.xx.xx.xx/28`, routed by the gateway and confirmed arriving |
-| VLAN 44 | created, router holds `44.xx.xx.xx` |
-| Firewall | inbound accepts and DMZ isolation in place, verified by test |
-| AREDN-local | on `44.xx.xx.xx` |
+| VLAN 44 | in place, router holds `44.xx.xx.xx`, DHCP with static leases |
+| Firewall | DMZ isolation and the tunnel drop remain; inbound accepts removed |
+| AREDN-local | on `44.xx.xx.xx`, working |
 | Supernode / tunnel server | on `<node-address>` / `<node-address>` behind port forwards |
 
-The remaining work is moving the supernode and tunnel server onto their public addresses. See
-[docs/migration.md](docs/migration.md), and [docs/tunnels.md](docs/tunnels.md) for the
-baseline a move has to match.
+**Parked, not abandoned.** The addressing is proven — all three systems ran on 44-net with
+their tunnels intact and inbound traffic verified arriving from the open internet. What is
+unresolved is an AREDN MTU limitation ([issue #2594](https://github.com/aredn/aredn/issues/2594)),
+which affects any AREDN tunnel whose peer is inside 44-net. See
+[docs/tunnels.md](docs/tunnels.md).
+
+To resume: re-enable `wireguardPOP`, re-add the two AMPRNet routes **and** a masquerade for
+`out-interface=wireguardPOP`, then follow [docs/migration.md](docs/migration.md). Without the
+masquerade the routes make 44-net unreachable from the LAN rather than reachable — with the
+tunnel disabled it works over the ordinary internet, which is why it is parked this way.
 
 ## 📚 Documentation
 
