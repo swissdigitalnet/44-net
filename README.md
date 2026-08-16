@@ -7,6 +7,10 @@
 
 Bringing real, routable AMPRNet addresses to the AREDN systems at HB9BLA.
 
+Other operators: [docs/enabling-44net.md](docs/enabling-44net.md) is a general guide to putting
+an AREDN tunnel server or supernode on 44net — including why you probably do **not** need 44net
+just to link to a peer who has a 44 address.
+
 ## 📻 The problem
 
 The AREDN systems at home share one public address from the internet provider. Every
@@ -98,6 +102,7 @@ tunnel disabled it works over the ordinary internet, which is why it is parked t
 
 | Document | What it covers |
 |---|---|
+| **[docs/enabling-44net.md](docs/enabling-44net.md)** | **Start here if you are an operator wanting 44net on your own node** |
 | [docs/concept.md](docs/concept.md) | Architecture, addressing, firewall design, and the constraints behind them |
 | [docs/operations.md](docs/operations.md) | Running it day to day: health checks, consoles, recovery, troubleshooting |
 | [docs/test-procedure.md](docs/test-procedure.md) | Repeatable tests proving open paths work and closed paths do not |
