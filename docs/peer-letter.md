@@ -21,7 +21,7 @@ internet connection.
 There are three changes you have to make:
 1. upgrade your tunnelserver or Supernode to the newest nightly
 2. go to advanced settings of your tunnel and add MTU 1360
-3. Change the address of my tunnel from <my-tunnel-hostname> to 44.xx for supernode and 44.xx if you operate a tunnel server
+3. Change the address of my tunnel from <my-tunnel-hostname> to **44.xx.xx.xx** if you connect to my supernode, or **44.xx.xx.xx** if you operate a tunnel server. The port stays the same.
 
 If you do not see the MTU field, your firmware is not on the latest release.
 

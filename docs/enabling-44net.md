@@ -165,20 +165,11 @@ echo dump | socat -T 8 -t 8 UNIX-CLIENT:/var/run/babel.sock - | grep neighbour
 
 AREDN web interface → **Tunnels** → **Advanced** (the toggle at the bottom of the dialog):
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Default Tunnel Cost                              [ 206  ]   │
-│  Default cost of a tunnel                                    │
-│                                                              │
-│  Default Tunnel MTU                               [ 1360 ]   │
-│  Default packet size for tunnels                             │
-│                                                              │
-│  The default packet (MTU) size for all tunnels. This can be  │
-│  set between 1280 and 1420 if your WAN network requires      │
-│  smaller packets than normal. Any change will affect all     │
-│  tunnels. Remember to change the MTU size at the other end.  │
-└──────────────────────────────────────────────────────────────┘
-```
+![Default Tunnel MTU field in the AREDN Tunnels dialog](img/tunnel-mtu.png)
+
+> The default packet (MTU) size for all tunnels. This can be set between 1280 and 1420
+> if your WAN network requires smaller packets than normal. Any change will affect all
+> tunnels. **Remember to change the MTU size at the other end.**
 
 Accepts 1280–1420, applies to every tunnel on the node, and persists across reboots and
 firmware upgrades because it is stored in AREDN's own configuration.
