@@ -283,17 +283,11 @@ echo dump | socat -T 8 -t 8 UNIX-CLIENT:/var/run/babel.sock - | grep neighbour
 **The fix**, on both ends of every tunnel crossing the gateway. AREDN web interface,
 **Tunnels → Advanced**:
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Default Tunnel MTU                               [ 1360 ]   │
-│  Default packet size for tunnels                             │
-│                                                              │
-│  The default packet (MTU) size for all tunnels. This can be  │
-│  set between 1280 and 1420 if your WAN network requires      │
-│  smaller packets than normal. Any change will affect all     │
-│  tunnels. Remember to change the MTU size at the other end.  │
-└──────────────────────────────────────────────────────────────┘
-```
+![Default Tunnel MTU field in the AREDN Tunnels dialog](docs/img/tunnel-mtu.png)
+
+> The default packet (MTU) size for all tunnels. This can be set between 1280 and 1420 if your
+> WAN network requires smaller packets than normal. Any change will affect all tunnels.
+> **Remember to change the MTU size at the other end.**
 
 Note AREDN's own warning: *remember to change it at the other end*. That is why migration is
 per-peer.
