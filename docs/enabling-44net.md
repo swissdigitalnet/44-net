@@ -40,6 +40,41 @@ public address and a router that passes IP protocol 4.
 That 40-byte difference decides whether other operators can reach you without changing their
 own MTU. See [tunnels.md](tunnels.md) for the arithmetic.
 
+## In the 44Net Connect portal
+
+Two steps at [connect.44net.cloud](https://connect.44net.cloud), before any router work. A
+portal.ampr.org login is required.
+
+Generate a WireGuard keypair on your router first — the portal asks for your public key, and
+the private key should never leave the router.
+
+**Tunnels — [connect.44net.cloud/tunnels](https://connect.44net.cloud/tunnels)**
+
+Request a new tunnel, choose a gateway server near you (it carries all your 44net traffic),
+paste your **public key**, and create it. The portal returns a wg-quick configuration with the
+three values the router needs:
+
+| From the portal | Used as |
+|---|---|
+| Gateway public key | the peer's public key |
+| Endpoint address and port | `endpoint-address` / `endpoint-port` |
+| Address for your tunnel interface | a `/32` on the tunnel interface |
+
+**Networks — [connect.44net.cloud/networks](https://connect.44net.cloud/networks)**
+
+Associate your allocated prefix with the tunnel you just created, so the gateway routes it down
+that tunnel to you.
+
+Skipping this produces a confusing result: the tunnel comes up and handshakes normally, but
+nothing is routed to you and your allocation stays unreachable. It looks like a broken tunnel
+and is not.
+
+> The networks page is not covered in the public wiki and the portal requires a login, so the
+> description above is inferred from the resulting configuration rather than from the page.
+> Corrections welcome.
+
+Allocations are requested from [ARDC](https://www.ampr.org/).
+
 ## Router configuration
 
 Written for RouterOS. Replace the placeholders with your own values.
@@ -54,7 +89,7 @@ Written for RouterOS. Replace the placeholders with your own values.
 # 2. The gateway's own address must NOT route into the tunnel
 /ip/route/add dst-address=<gateway>/32 gateway=<your-isp-gateway>
 
-# 3. AMPRNet via the tunnel
+# 3. 44net via the tunnel
 /ip/route/add dst-address=44.0.0.0/9    gateway=<tunnel>
 /ip/route/add dst-address=44.128.0.0/10 gateway=<tunnel>
 
@@ -67,7 +102,7 @@ Step 2 is not optional and is easy to miss. The gateway's public address lies in
 `44.0.0.0/9`, so without a more specific route the tunnel's own traffic is routed into the
 tunnel and it stops working the moment you add step 3.
 
-`44.192.0.0/10` is deliberately absent — that block was sold and is not AMPRNet.
+`44.192.0.0/10` is deliberately absent — that block was sold and is not 44net.
 
 Step 4 matters more than it looks. With the routes in place but no masquerade, packets from
 your network enter the tunnel carrying a private source address that nothing can reply to — so
