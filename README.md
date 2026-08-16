@@ -324,11 +324,7 @@ If a peer is unreachable, disable the tunnel rather than leaving it connected.
 |---|---|
 | [docs/enabling-44net.md](docs/enabling-44net.md) | Full setup guide with configuration examples |
 | [docs/peer-letter.md](docs/peer-letter.md) | Template letter asking a peer to move |
-| [docs/tunnels.md](docs/tunnels.md) | Tunnel roles, what each link needs, MTU arithmetic |
 | [docs/test-procedure.md](docs/test-procedure.md) | Proving the open paths work and the closed ones do not |
-| [docs/operations.md](docs/operations.md) | Health checks, consoles, recovery |
-| [docs/concept.md](docs/concept.md) | Architecture and firewall design in detail |
-| [docs/migration.md](docs/migration.md) | Per-node cutover runbook |
 
 ## 🔗 References
 
