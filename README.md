@@ -18,7 +18,7 @@ service they offer has to be squeezed through a port forward on that single addr
 the systems never see who is really talking to them — only the router's translated view.
 Adding a second service means finding another free port and remembering what it was for.
 
-Licensed radio amateurs can be allocated addresses from AMPRNet, the 44.0.0.0/8 range
+Licensed radio amateurs can be allocated addresses from 44net, the 44.0.0.0/8 range
 reserved for amateur radio. Those are genuine public addresses. The difficulty is getting
 them from the network that allocates them to a house on an ordinary internet connection.
 
