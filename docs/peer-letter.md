@@ -13,39 +13,17 @@ which wastes an evening for both of you.
 
 Hello [name]
 
-My node now has a 44net address, and I would like to move our tunnel over to it when it suits
+My node now has a 44net fixed IP address, and I would like to move our tunnel over to it when it suits
 you. Traffic between us would then run over 44net rather than through my commercial
 internet connection.
+44net is a unique HAM radio IP range. Google for it and read the readme (https://github.com/SensorsIot/44-net) if you are interested in changing your setup, too.
 
-There is one thing that has to be set at your end first, and doing it in the wrong order
-causes a confusing failure — so I have written it out.
+There are three changes you have to make:
+1. upgrade your tunnelserver or Supernode to the newest nightly
+2. go to advanced settings of your tunnel and add MTU 1360
+3. Change the address of my tunnel from <my-tunnel-hostname> to 44.xx for supernode and 44.xx if you operate a tunnel server
 
-**Why a setting is needed.** My 44net allocation reaches me through a WireGuard tunnel from the
-44net gateway. Once you dial my 44net address, your tunnel runs *inside* that one. Two layers
-of encapsulation, and the inner one no longer fits: the usable size drops from about 1500 to
-about 1420, while an AREDN tunnel at its 1420 default needs roughly 1480.
-
-**What that failure looks like**, in case you meet it anywhere else: the tunnel connects, the
-handshake is fine, and my node appears in your mesh as a bare MAC address with no hostname and
-no Babel metric. Nothing routes. Small packets get through and full-size ones do not, so
-everything looks healthy except that it does not work.
-
-**The setting.** In the AREDN web interface: **Tunnels → Advanced → Default Tunnel MTU**, set
-to **1360**. It applies to all tunnels on the node, and it persists across reboots and firmware
-upgrades. The field accepts 1280 to 1420.
-
-If you do not see that field, your firmware predates it. On older releases the only option is
-`ip link set dev <interface> mtu 1360` over SSH, which is lost at the next reboot — so a
-firmware update is worth doing first.
-
-**Then, in this order:**
-
-1. Set the MTU to 1360 and let the tunnels re-establish.
-2. Change our tunnel's address from [your ISP address] to **[your 44net address]**, same port.
-3. Check that my node appears with a proper Babel metric, not just as a MAC address.
-
-**If anything goes wrong**, put the old address back. I am leaving the existing path in place
-indefinitely, so it will keep working — nothing you do here is one-way.
+If you do not see the MTU field, your firmware is not on the latest release.
 
 Happy to do it together over a sked if that is easier.
 
