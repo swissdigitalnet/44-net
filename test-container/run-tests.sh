@@ -35,12 +35,30 @@ if [[ -z "$route" ]]; then
     exit 1
 fi
 note "$route"
+
 if grep -qiE 'dev (wg|tun|tap|gre)' <<<"$route"; then
     bad "route leaves via a tunnel interface - this host is not outside the network under test"
     note "the procedure is meaningless from inside; use a machine on the open internet"
     exit 1
 fi
-ok "route to $DEVICE is over the public internet, not a tunnel of yours"
+
+# A private or CGNAT target means we are inside the network under test, whatever
+# interface the route uses. Catching only tunnels was not enough: a LAN route
+# looks perfectly ordinary and would let the whole suite pass while proving
+# nothing about the inbound path.
+same_network=0
+if [[ "$DEVICE" =~ ^10\. ]] ||
+   [[ "$DEVICE" =~ ^192\.168\. ]] ||
+   [[ "$DEVICE" =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]] ||
+   [[ "$DEVICE" =~ ^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\. ]]; then
+    same_network=1
+    bad "$DEVICE is a private address - this is not a test of the inbound path"
+    note "your 44net allocation is public space; a private target means you are"
+    note "inside the network under test. Useful for shaking out this script,"
+    note "worthless as evidence. Continuing in degraded mode."
+else
+    ok "route to $DEVICE is over the public internet, not a tunnel of yours"
+fi
 
 # ------------------------------------------------------- 1. inbound allowed
 
@@ -59,14 +77,18 @@ else
     note "version=${ver:-?}  ota=${ota:-?}"
     note "device saw us as: ${you:-?}"
 
-    myip="$(curl -s -m "$TIMEOUT" https://api.ipify.org 2>/dev/null)"
-    if [[ -n "$myip" && -n "$you" ]]; then
-        if [[ "${you%%:*}" == "$myip" ]]; then
-            ok "source address preserved end to end (${myip})"
-        else
-            bad "source rewritten: we are ${myip}, device saw ${you%%:*}"
-            note "something between here and the segment is translating - "
-            note "expected on a masqueraded path, wrong on a routed 44net path"
+    if [[ "$same_network" -eq 1 ]]; then
+        note "skipping the source check: on the same network there is no NAT to detect"
+    else
+        myip="$(curl -s -m "$TIMEOUT" https://api.ipify.org 2>/dev/null)"
+        if [[ -n "$myip" && -n "$you" ]]; then
+            if [[ "${you%%:*}" == "$myip" ]]; then
+                ok "source address preserved end to end (${myip})"
+            else
+                bad "source rewritten: we are ${myip}, device saw ${you%%:*}"
+                note "something between here and the segment is translating -"
+                note "expected on a masqueraded path, wrong on a routed 44net path"
+            fi
         fi
     fi
 fi
@@ -110,6 +132,13 @@ if grep -qiE 'succeeded|open' <<<"$out"; then
 elif grep -qi 'no route to host' <<<"$out"; then
     bad "got 'No route to host' - the firewall ACCEPTED this port, it should drop it"
     note "contrast with test 3: acceptance leaks the fact that the port is open"
+elif grep -qiE 'refused|reset' <<<"$out"; then
+    # A reset means the packet reached a host that declined it - nothing was
+    # filtered. Reporting that as a pass would credit the firewall for a result
+    # it had no part in.
+    bad "connection refused on ${BLOCKED_PORT} - the packet reached the host and was reset"
+    note "nothing dropped it; the target simply has no service on that port"
+    note "a firewall that drops would give silence instead"
 else
     ok "silent timeout on ${BLOCKED_PORT} - correct, a refusal would tell a scanner it is there"
 fi

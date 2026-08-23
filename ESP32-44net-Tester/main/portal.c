@@ -227,13 +227,21 @@ static esp_err_t save_post(httpd_req_t *req)
 }
 
 /* Unknown paths - including the OS connectivity-probe URLs - redirect to the
-   form, which is what makes the device register as a captive portal. */
-static esp_err_t redirect_handler(httpd_req_t *req, httpd_err_code_t err)
+   form, which is what makes the device register as a captive portal.
+   Registered as a wildcard URI rather than relying on the 404 error hook:
+   the hook fires too late for iOS, which retries /hotspot-detect.html and
+   gives up rather than opening the portal sheet. */
+static esp_err_t catchall_get(httpd_req_t *req)
 {
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", "http://" PORTAL_IP "/");
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
+}
+
+static esp_err_t redirect_handler(httpd_req_t *req, httpd_err_code_t err)
+{
+    return catchall_get(req);
 }
 
 bool portal_run(int timeout_s)
@@ -247,16 +255,21 @@ bool portal_run(int timeout_s)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.max_uri_handlers = 8;
     cfg.lru_purge_enable = true;
+    cfg.uri_match_fn     = httpd_uri_match_wildcard;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "portal httpd failed to start");
         s_dns_run = false;
         return false;
     }
 
+    /* Order matters: wildcard matching tries handlers in registration order,
+       so the real pages must be registered before the catch-all. */
     httpd_uri_t u_root = { .uri = "/",     .method = HTTP_GET,  .handler = root_get };
     httpd_uri_t u_save = { .uri = "/save", .method = HTTP_POST, .handler = save_post };
+    httpd_uri_t u_any  = { .uri = "/*",    .method = HTTP_GET,  .handler = catchall_get };
     httpd_register_uri_handler(s_httpd, &u_root);
     httpd_register_uri_handler(s_httpd, &u_save);
+    httpd_register_uri_handler(s_httpd, &u_any);
     httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, redirect_handler);
 
     ESP_LOGI(TAG, "portal open for %d s on http://%s/", timeout_s, PORTAL_IP);

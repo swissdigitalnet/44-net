@@ -206,8 +206,10 @@ static esp_err_t ui_get(httpd_req_t *req)
         "<!doctype html><meta name=viewport content=width=device-width,initial-scale=1>"
         "<meta http-equiv=refresh content=10>"
         "<title>44net tester</title>"
-        "<style>body{font-family:ui-monospace,monospace;margin:2rem;white-space:pre}</style>");
+        "<style>body{font-family:ui-monospace,monospace;margin:2rem}"
+        "pre{margin:0}</style><pre>");
     httpd_resp_sendstr_chunk(req, buf);
+    httpd_resp_sendstr_chunk(req, "</pre>");
     httpd_resp_sendstr_chunk(req, NULL);
     free(buf);
     return ESP_OK;
