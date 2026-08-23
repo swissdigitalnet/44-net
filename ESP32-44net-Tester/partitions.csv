@@ -1,9 +1,14 @@
-# factory + two OTA slots. Required for CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE:
-# a bad push reverts on the next boot instead of stranding the device.
+# Two OTA slots, no factory app.
+#
+# Required for CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE: a push that cannot rejoin
+# WiFi never marks itself valid and the bootloader returns to the other slot.
+# With no factory partition the bootloader boots ota_0 when otadata is empty,
+# which is what a freshly flashed device has.
+#
+# 0x20000 + 2 * 1792K = 3712K, inside the 4MB of a WROOM-32.
 # Name,     Type, SubType,  Offset,   Size
 nvs,        data, nvs,      0x9000,   0x6000
 otadata,    data, ota,      0xf000,   0x2000
 phy_init,   data, phy,      0x11000,  0x1000
-factory,    app,  factory,  0x20000,  1400K
-ota_0,      app,  ota_0,    ,         1400K
-ota_1,      app,  ota_1,    ,         1400K
+ota_0,      app,  ota_0,    0x20000,  0x1C0000
+ota_1,      app,  ota_1,    ,         0x1C0000

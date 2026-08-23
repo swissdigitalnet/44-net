@@ -1,5 +1,9 @@
 CONFIG_IDF_TARGET="esp32"
 
+# WROOM-32 carries 4MB. The default is 2MB, which the OTA layout does not fit.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
 # Custom partition table with two OTA slots
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
@@ -11,9 +15,6 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 # HTTP server needs a few extra handlers (/, /ui, /ota, captive-portal probes)
 CONFIG_HTTPD_MAX_URI_HANDLERS=12
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
-
-# OTA pushes stream a ~1 MB body; keep the socket patient but not infinite
-CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
 
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 CONFIG_FREERTOS_HZ=1000
