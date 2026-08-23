@@ -78,6 +78,26 @@ firewall is accepting it and only the absence of a host is hiding you.
 The contrast between those two is the actual proof that your rules discriminate
 by port and not merely by address.
 
+## It refuses to pretend
+
+Two checks exist because the runner was first tried from inside a LAN and
+reported reassuring nonsense.
+
+**A private target is rejected.** The preflight originally looked only for
+tunnel interfaces, so a plain LAN route passed as "over the public internet"
+and the whole suite ran happily against a target it could reach directly. It
+now rejects RFC1918 and CGNAT destinations and marks the run degraded. Your
+allocation is public space; if the target is private, you are inside the
+network under test and the results are worthless as evidence.
+
+**A TCP reset is not a pass.** The blocked-port check counted any non-success
+as correct, so a target with nothing listening on that port looked like a
+working firewall rule. A reset means the packet reached the host and was
+declined — nothing filtered it. Only silence proves a drop.
+
+The source-address comparison is skipped when the target is on the same
+network, since there is no NAT between you to detect.
+
 ## What it cannot check
 
 Tests 1, 2, 3, 7, 8 and 9 of the procedure — the ones run *from* the router or

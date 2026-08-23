@@ -4,9 +4,8 @@ config TESTER_AP_SSID
     string "Provisioning AP SSID"
     default "44net-tester-setup"
     help
-      SSID raised when no credentials are stored, when joining fails, or when
-      the BOOT button is held at reset. The AP is open by design: it exists
-      only during short recovery windows.
+      SSID raised when no credentials are stored or when joining fails. The
+      AP is open by design: it exists only during short recovery windows.
 
 config TESTER_PORTAL_TIMEOUT_S
     int "Portal window before reboot (seconds)"
@@ -24,8 +23,12 @@ config TESTER_BOOT_GPIO
     int "GPIO of the BOOT button"
     default 0
     help
-      0 on ESP32 and ESP32-S3, 9 on ESP32-C3. Held low at reset forces the
-      provisioning portal regardless of stored credentials.
+      0 on ESP32 and ESP32-S3, 9 on ESP32-C3.
+
+      NOTE: on the ESP32 this cannot be invoked. The ROM bootloader samples
+      GPIO0 at reset and enters serial download mode when it is low, so the
+      application never runs. See docs/esp32-tester.md. To re-provision, move
+      the device out of range of its stored network instead.
 
 config TESTER_UDP_PORT
     int "UDP port to listen on"

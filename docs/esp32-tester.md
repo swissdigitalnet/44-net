@@ -30,11 +30,16 @@ WROOM-32**; 4 MB flash, no PSRAM, USB power. Nothing here stresses the part.
 
 ## Getting it onto the network
 
-There is no WiFi configuration in the firmware. On first boot — or after a
-failed join, or with **BOOT held at reset** — it raises an **open** access
-point called `44net-tester-setup` and serves a captive portal. Pick your
-network from the scan list, or type an SSID that is hidden or out of range,
-and it stores the credentials and reboots.
+There is no WiFi configuration in the firmware. On first boot, or when it
+cannot join the network it has stored, it raises an **open** access point
+called `44net-tester-setup` and serves a captive portal. Pick your network
+from the scan list, or type an SSID that is hidden or out of range, and it
+stores the credentials and reboots.
+
+**To re-provision it, move it out of range of its current network.** It tries
+three times at ten seconds each, so roughly forty seconds after power-on it
+gives up and opens the portal. That is the intended path, and it is the one
+that works — carrying the device to a new site is exactly the case it handles.
 
 The portal is open on purpose: it exists only in short recovery windows, and
 its only capability is joining a WiFi network. If that trade is wrong for your
@@ -50,6 +55,25 @@ falls back to the portal, for the same reason.
 The consequence to know: if the passphrase is genuinely wrong, it cycles
 portal → reboot → portal every ten minutes, so you have to catch it during an
 AP window. You will see it never associating on your access point.
+
+### The BOOT button does not work, and here is why
+
+`CONFIG_TESTER_BOOT_GPIO` exists and the firmware reads it, but the feature
+cannot be invoked on an ESP32 and should be treated as absent.
+
+GPIO0 is sampled by the **ROM bootloader** at reset: held low, the chip enters
+serial download mode and the application never runs. So the intuitive gesture —
+hold BOOT, press reset — guarantees the check never executes. The firmware
+reads the pin about 700 ms into `app_main` and samples it for only 100 ms, so
+hitting it would mean releasing reset and then pressing BOOT inside a narrow
+window three quarters of a second later.
+
+It would also not do what the name suggests: it opens the portal, it does not
+erase stored credentials. `netcfg_erase()` is written but never called.
+
+Use the out-of-range path above instead. Fixing this properly means polling the
+pin for the first few seconds after boot rather than taking one brief sample,
+and calling `netcfg_erase()` when it fires.
 
 ## Addressing
 
@@ -159,6 +183,33 @@ git tag v0.3.0 && git push --tags     # produces a release with esp32-44net-test
 
 Configuration lives in `menuconfig` under **44net Tester**: AP SSID, portal
 timeout, join attempts, BOOT GPIO, UDP port, OTA enable and token.
+
+## What has been verified, and what has not
+
+Confirmed working on real hardware, `v0.1.0` on an ESP32-WROOM-32:
+
+```
+you=192.0.2.6:1189      source echo, caller's real address
+id=esp32-44net-tester
+version=v0.1.0            git describe, injected at build time
+ota=valid                 rollback confirmation completed
+uptime=42s  rssi=-42  heap=207796  udp_port=5000
+
+arrivals (last 16):
+  tcp 192.0.2.6:1189  -> :80    x1
+  udp 192.0.2.160:49862 -> :5000  x1
+```
+
+The full update chain has been exercised end to end: CI built a tagged release,
+the container fetched it, pushed it over the air, and the device came back
+reporting the new version and moved from `ota=pending` to `ota=valid` after its
+settle period. The rollback path is therefore live, not theoretical.
+
+**Not yet verified: the device has only ever been tested from inside a LAN.**
+Everything above proves the firmware. None of it proves the path across a
+gateway tunnel — the `you=` echo showing an internet-sourced address, the
+inbound firewall rule, or the POP's source filtering. That needs the device on
+a real 44net segment with a machine outside your network probing it.
 
 ## A word on leaving it running
 
