@@ -42,7 +42,8 @@ void app_main(void)
     bool have_creds = (netcfg_load(&creds) == ESP_OK) && creds.ssid[0];
 
     if (forced || !have_creds) {
-        ESP_LOGI(TAG, forced ? "portal: requested" : "portal: no stored credentials");
+        ESP_LOGI(TAG, "entering provisioning portal (%s)",
+                 forced ? "requested" : "no stored credentials");
         portal_run(CONFIG_TESTER_PORTAL_TIMEOUT_S);
         /* Either way we reboot: on success to come up cleanly in station mode,
            on timeout to retry whatever is stored. Never linger as an AP. */
