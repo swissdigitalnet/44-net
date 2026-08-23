@@ -10,7 +10,28 @@
 
 set -uo pipefail
 
-DEVICE="${DEVICE:?set DEVICE to the tester address}"
+NETWORK="${NETWORK:-}"
+DEVICE="${DEVICE:-}"
+
+# Same reasoning as run-tests.sh: an allocation is small enough to sweep, so
+# nobody should have to look up where the tester landed.
+if [[ -z "$DEVICE" && -n "$NETWORK" ]]; then
+    ip="${NETWORK%/*}"; pfx="${NETWORK#*/}"
+    IFS=. read -r a b c d <<<"$ip"
+    size=$(( 1 << (32 - pfx) )); base=$(( d & (255 ^ (size - 1)) ))
+    for (( i = 1; i < size - 1; i++ )); do
+        cand="$a.$b.$c.$(( base + i ))"
+        if curl -s -m 4 "http://${cand}/" 2>/dev/null | grep -q '^id=esp32-44net-tester'; then
+            DEVICE="$cand"
+            echo "discovered tester at ${DEVICE}"
+            break
+        fi
+    done
+fi
+if [[ -z "$DEVICE" ]]; then
+    echo "no tester found - set DEVICE, or NETWORK to sweep" >&2
+    exit 1
+fi
 GITHUB_REPO="${GITHUB_REPO:-swissdigitalnet/44-net}"
 OTA_TOKEN="${OTA_TOKEN:?set OTA_TOKEN to the token built into the firmware}"
 ASSET="${ASSET:-esp32-44net-tester.bin}"

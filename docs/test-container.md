@@ -42,14 +42,37 @@ docker compose build
 
 | Variable | Meaning |
 |---|---|
-| `DEVICE` | the target on your 44net segment |
-| `UNUSED` | an address in your allocation with nothing on it (test 5) |
+| `NETWORK` | your allocation, e.g. `44.xx.yy.64/28` — the runner finds the rest |
+| `DEVICE` | optional: a specific target, skipping discovery |
+| `UNUSED` | optional: an address with nothing on it (test 5) |
 | `UDP_PORT` | UDP port your firewall permits and the target listens on |
 | `ALLOWED_PORT` | a TCP port your firewall permits inbound |
 | `BLOCKED_PORT` | a TCP port it must block |
 | `GITHUB_REPO`, `OTA_TOKEN` | update push only |
 
 Nothing site-specific is baked into the image.
+
+## It finds the device itself
+
+An allocation is small — a `/28` is thirteen usable addresses — so there is no
+reason to look up where the tester landed. Set `NETWORK` and the runner sweeps
+it in parallel, recognising the tester by the `id=` it reports about itself:
+
+```
+Discovery
+        sweeping 44.xx.yy.64/28 for a tester
+  PASS  found tester at 44.xx.yy.71
+        using 44.xx.yy.65 as the empty address for test 5
+```
+
+It also picks an address that stayed quiet for test 5, which needs somewhere
+the router will accept traffic for but nothing answers on. Set `DEVICE` or
+`UNUSED` explicitly to override either.
+
+If nothing answers anywhere in the range the run stops there, because from
+outside **an unreachable device and an absent one look identical** — that is
+the inbound accept rule missing, or no tester running, and the tests below
+cannot tell you which.
 
 ## Running the tests
 

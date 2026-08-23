@@ -8,13 +8,6 @@
 
 set -uo pipefail
 
-DEVICE="${DEVICE:?set DEVICE to the tester address on your 44net segment}"
-UNUSED="${UNUSED:?set UNUSED to an address in your allocation with nothing on it}"
-UDP_PORT="${UDP_PORT:-5000}"
-ALLOWED_PORT="${ALLOWED_PORT:-80}"
-BLOCKED_PORT="${BLOCKED_PORT:-22}"
-TIMEOUT="${TIMEOUT:-6}"
-
 pass=0
 fail=0
 
@@ -22,6 +15,90 @@ ok()   { printf '  \033[32mPASS\033[0m  %s\n' "$1"; pass=$((pass+1)); }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; fail=$((fail+1)); }
 note() { printf '        %s\n' "$1"; }
 head2() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+NETWORK="${NETWORK:-}"
+DEVICE="${DEVICE:-}"
+UNUSED="${UNUSED:-}"
+UDP_PORT="${UDP_PORT:-5000}"
+ALLOWED_PORT="${ALLOWED_PORT:-80}"
+BLOCKED_PORT="${BLOCKED_PORT:-22}"
+TIMEOUT="${TIMEOUT:-6}"
+
+if [[ -z "$NETWORK" && -z "$DEVICE" ]]; then
+    echo "set NETWORK to your allocation (e.g. 44.xx.yy.64/28), or DEVICE to a known address" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------- discovery
+#
+# An allocation is small - a /28 is thirteen usable addresses - so there is no
+# reason to make anyone look up where the tester landed. Sweep the range and
+# recognise it by what it says about itself.
+
+cidr_hosts() {
+    local ip="${1%/*}" pfx="${1#*/}" a b c d
+    IFS=. read -r a b c d <<<"$ip"
+    if (( pfx < 24 || pfx > 30 )); then
+        echo "unsupported prefix /$pfx - use /24 to /30" >&2
+        return 1
+    fi
+    local size=$(( 1 << (32 - pfx) ))
+    local base=$(( d & (255 ^ (size - 1)) ))
+    local i
+    for (( i = 1; i < size - 1; i++ )); do
+        echo "$a.$b.$c.$(( base + i ))"
+    done
+}
+
+discover() {
+    local net="$1" tmp ip
+    tmp="$(mktemp -d)"
+    while read -r ip; do
+        (
+            if curl -s -m 4 "http://${ip}/" 2>/dev/null | grep -q '^id=esp32-44net-tester'; then
+                : > "${tmp}/found.${ip}"
+            else
+                : > "${tmp}/quiet.${ip}"
+            fi
+        ) &
+    done < <(cidr_hosts "$net")
+    wait
+
+    mapfile -t FOUND < <(cd "$tmp" && ls found.* 2>/dev/null | sed 's/^found\.//')
+    mapfile -t QUIET < <(cd "$tmp" && ls quiet.* 2>/dev/null | sed 's/^quiet\.//')
+    rm -rf "$tmp"
+}
+
+if [[ -z "$DEVICE" ]]; then
+    printf '\033[1mDiscovery\033[0m\n'
+    note "sweeping ${NETWORK} for a tester"
+    discover "$NETWORK"
+
+    if [[ "${#FOUND[@]}" -eq 0 ]]; then
+        printf '  \033[31mFAIL\033[0m  no tester answered anywhere in %s\n' "$NETWORK"
+        note "either none is running, or the inbound accept rule is missing -"
+        note "from outside, an unreachable device and an absent one look identical"
+        exit 1
+    fi
+    if [[ "${#FOUND[@]}" -gt 1 ]]; then
+        note "more than one tester answered: ${FOUND[*]}"
+        note "using the first; set DEVICE explicitly to choose"
+    fi
+    DEVICE="${FOUND[0]}"
+    printf '  \033[32mPASS\033[0m  found tester at %s\n' "$DEVICE"
+
+    # Test 5 needs an address the router will accept but nothing answers on.
+    # Anything that stayed quiet during the sweep qualifies.
+    if [[ -z "$UNUSED" && "${#QUIET[@]}" -gt 0 ]]; then
+        UNUSED="${QUIET[0]}"
+        note "using ${UNUSED} as the empty address for test 5"
+    fi
+fi
+
+if [[ -z "$UNUSED" ]]; then
+    echo "set UNUSED to an address in your allocation with nothing on it" >&2
+    exit 1
+fi
 
 fetch() { curl -s -m "$TIMEOUT" "http://${DEVICE}/"; }
 
