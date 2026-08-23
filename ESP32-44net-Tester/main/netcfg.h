@@ -24,8 +24,14 @@ bool netcfg_sta_connect(const netcfg_creds_t *c, int max_retry, int per_try_ms);
 /* APSTA so the portal can scan while serving. */
 esp_err_t netcfg_ap_start(const char *ssid);
 
-/* true when the BOOT button is held at reset. */
-bool netcfg_boot_button_pressed(void);
+/* Watches the button throughout normal operation: held for hold_ms it erases
+   the stored credentials and reboots, which brings the device up in the
+   provisioning portal.
+
+   Deliberately NOT read at reset. The ROM bootloader samples GPIO0 there and
+   enters serial download mode when it is low, so a button checked at reset can
+   never be seen by the application at all. */
+void netcfg_watch_reset_button(int hold_ms);
 
 const char *netcfg_ip_str(void);   /* "0.0.0.0" until DHCP completes */
 int netcfg_rssi(void);

@@ -25,10 +25,10 @@ config TESTER_BOOT_GPIO
     help
       0 on ESP32 and ESP32-S3, 9 on ESP32-C3.
 
-      NOTE: on the ESP32 this cannot be invoked. The ROM bootloader samples
-      GPIO0 at reset and enters serial download mode when it is low, so the
-      application never runs. See docs/esp32-tester.md. To re-provision, move
-      the device out of range of its stored network instead.
+      Held for three seconds DURING OPERATION it erases the stored network and
+      reboots into the portal. It is deliberately not read at reset: the ROM
+      bootloader samples GPIO0 there and enters serial download mode when it is
+      low, so a button checked at reset is invisible to the application.
 
 config TESTER_UDP_PORT
     int "UDP port to listen on"

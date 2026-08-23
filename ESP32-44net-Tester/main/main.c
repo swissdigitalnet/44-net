@@ -19,6 +19,7 @@
 static const char *TAG = "main";
 
 #define STA_PER_TRY_MS  10000
+#define BTN_HOLD_MS     3000
 #define OTA_SETTLE_S    30
 
 static void reboot(const char *why)
@@ -32,18 +33,15 @@ void app_main(void)
 {
     ESP_ERROR_CHECK(netcfg_init());
 
-    /* Read the button before anything else touches the pin. */
-    bool forced = netcfg_boot_button_pressed();
-    if (forced) {
-        ESP_LOGW(TAG, "BOOT held - forcing the provisioning portal");
-    }
+    /* Runs for the lifetime of the device, in every mode. Holding the button
+       for BTN_HOLD_MS erases the stored network and reboots into the portal. */
+    netcfg_watch_reset_button(BTN_HOLD_MS);
 
     netcfg_creds_t creds = { 0 };
     bool have_creds = (netcfg_load(&creds) == ESP_OK) && creds.ssid[0];
 
-    if (forced || !have_creds) {
-        ESP_LOGI(TAG, "entering provisioning portal (%s)",
-                 forced ? "requested" : "no stored credentials");
+    if (!have_creds) {
+        ESP_LOGI(TAG, "entering provisioning portal (no stored credentials)");
         portal_run(CONFIG_TESTER_PORTAL_TIMEOUT_S);
         /* Either way we reboot: on success to come up cleanly in station mode,
            on timeout to retry whatever is stored. Never linger as an AP. */

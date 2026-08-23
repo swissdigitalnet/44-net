@@ -56,24 +56,21 @@ The consequence to know: if the passphrase is genuinely wrong, it cycles
 portal → reboot → portal every ten minutes, so you have to catch it during an
 AP window. You will see it never associating on your access point.
 
-### The BOOT button does not work, and here is why
+### Forgetting the network
 
-`CONFIG_TESTER_BOOT_GPIO` exists and the firmware reads it, but the feature
-cannot be invoked on an ESP32 and should be treated as absent.
+**Hold the BOOT button for three seconds while it is running.** It erases the
+stored credentials and reboots straight into the provisioning portal. Progress
+is logged at one and two seconds, and releasing before three cancels it.
 
-GPIO0 is sampled by the **ROM bootloader** at reset: held low, the chip enters
-serial download mode and the application never runs. So the intuitive gesture —
-hold BOOT, press reset — guarantees the check never executes. The firmware
-reads the pin about 700 ms into `app_main` and samples it for only 100 ms, so
-hitting it would mean releasing reset and then pressing BOOT inside a narrow
-window three quarters of a second later.
+**Do not hold it during reset.** The ROM bootloader samples GPIO0 at reset and
+enters serial download mode when it is low, so a button read at reset can never
+be seen by the application at all. That is why this is watched continuously
+during operation instead — a task polls the pin every 100 ms for the lifetime
+of the device, in every mode.
 
-It would also not do what the name suggests: it opens the portal, it does not
-erase stored credentials. `netcfg_erase()` is written but never called.
-
-Use the out-of-range path above instead. Fixing this properly means polling the
-pin for the first few seconds after boot rather than taking one brief sample,
-and calling `netcfg_erase()` when it fires.
+The other way to re-provision is simply to move it out of range: it tries three
+times at ten seconds each, so about forty seconds later it opens the portal on
+its own.
 
 ## Addressing
 
@@ -186,7 +183,7 @@ timeout, join attempts, BOOT GPIO, UDP port, OTA enable and token.
 
 ## What has been verified, and what has not
 
-Confirmed working on real hardware, `v0.1.0` on an ESP32-WROOM-32:
+Confirmed working on real hardware, on an ESP32-WROOM-32:
 
 ```
 you=192.0.2.6:1189      source echo, caller's real address

@@ -5,6 +5,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -145,7 +146,35 @@ esp_err_t netcfg_ap_start(const char *ssid)
     return ESP_OK;
 }
 
-bool netcfg_boot_button_pressed(void)
+#define BTN_POLL_MS 100
+
+static void reset_button_task(void *arg)
+{
+    const int hold_ms = (int)(intptr_t)arg;
+    int held = 0;
+
+    for (;;) {
+        if (gpio_get_level(CONFIG_TESTER_BOOT_GPIO) == 0) {
+            held += BTN_POLL_MS;
+            if (held == 1000 || held == 2000) {
+                ESP_LOGW(TAG, "button held %d ms (release before %d ms to cancel)",
+                         held, hold_ms);
+            }
+            if (held >= hold_ms) {
+                ESP_LOGW(TAG, "button held %d ms - erasing credentials and rebooting",
+                         held);
+                netcfg_erase();
+                vTaskDelay(pdMS_TO_TICKS(200));
+                esp_restart();
+            }
+        } else {
+            held = 0;   /* must be a continuous hold, not an accumulation */
+        }
+        vTaskDelay(pdMS_TO_TICKS(BTN_POLL_MS));
+    }
+}
+
+void netcfg_watch_reset_button(int hold_ms)
 {
     gpio_config_t io = {
         .pin_bit_mask = 1ULL << CONFIG_TESTER_BOOT_GPIO,
@@ -154,14 +183,15 @@ bool netcfg_boot_button_pressed(void)
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
-    if (gpio_config(&io) != ESP_OK) return false;
-
-    int low = 0;
-    for (int i = 0; i < 5; i++) {
-        if (gpio_get_level(CONFIG_TESTER_BOOT_GPIO) == 0) low++;
-        vTaskDelay(pdMS_TO_TICKS(20));
+    if (gpio_config(&io) != ESP_OK) {
+        ESP_LOGE(TAG, "cannot configure GPIO%d - reset button disabled",
+                 CONFIG_TESTER_BOOT_GPIO);
+        return;
     }
-    return low >= 4;   /* debounced */
+    xTaskCreate(reset_button_task, "reset_btn", 3072,
+                (void *)(intptr_t)hold_ms, 4, NULL);
+    ESP_LOGI(TAG, "reset button on GPIO%d, hold %d ms to forget the network",
+             CONFIG_TESTER_BOOT_GPIO, hold_ms);
 }
 
 const char *netcfg_ip_str(void) { return s_ip; }
