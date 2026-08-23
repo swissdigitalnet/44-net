@@ -1,0 +1,50 @@
+menu "44net Tester"
+
+config TESTER_AP_SSID
+    string "Provisioning AP SSID"
+    default "44net-tester-setup"
+    help
+      SSID raised when no credentials are stored, when joining fails, or when
+      the BOOT button is held at reset. The AP is open by design: it exists
+      only during short recovery windows.
+
+config TESTER_PORTAL_TIMEOUT_S
+    int "Portal window before reboot (seconds)"
+    default 600
+    help
+      How long the provisioning portal stays up before rebooting and retrying
+      the stored credentials. Bounded on purpose: a transient AP outage must
+      not park the device in AP mode forever at a remote site.
+
+config TESTER_STA_MAX_RETRY
+    int "Join attempts before falling back to the portal"
+    default 3
+
+config TESTER_BOOT_GPIO
+    int "GPIO of the BOOT button"
+    default 0
+    help
+      0 on ESP32 and ESP32-S3, 9 on ESP32-C3. Held low at reset forces the
+      provisioning portal regardless of stored credentials.
+
+config TESTER_UDP_PORT
+    int "UDP port to listen on"
+    default 5000
+    help
+      Answers test 4 of docs/test-procedure.md, which probes an allowed UDP
+      port. Arrivals are recorded (headers only) and shown on the status page.
+
+config TESTER_OTA_ENABLE
+    bool "Enable the POST /ota update command"
+    default y
+    help
+      Writes flash. Protect it with a firewall rule scoped to the source
+      address of your update host; the token below is a guard against
+      mistakes, not against an attacker.
+
+config TESTER_OTA_TOKEN
+    string "Bearer token required by POST /ota"
+    default "change-me"
+    depends on TESTER_OTA_ENABLE
+
+endmenu

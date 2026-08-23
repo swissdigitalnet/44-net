@@ -1,0 +1,35 @@
+name: release
+
+# Only a tag produces a release. The update host fetches the latest release,
+# never the latest commit, so an experimental push to main cannot reach a
+# device in the field.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: latest
+          target: esp32
+          path: 'ESP32-44net-Tester'
+
+      - name: Stage asset with a predictable name
+        run: cp ESP32-44net-Tester/build/esp32-44net-tester.bin esp32-44net-tester.bin
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: esp32-44net-tester.bin
+          generate_release_notes: true

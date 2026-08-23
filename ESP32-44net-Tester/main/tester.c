@@ -1,0 +1,382 @@
+#include <string.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include "tester.h"
+#include "netcfg.h"
+#include "esp_http_server.h"
+#include "esp_ota_ops.h"
+#include "esp_app_desc.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+
+static const char *TAG = "tester";
+
+#ifndef TESTER_VERSION
+#define TESTER_VERSION "unknown"
+#endif
+
+/* ---------- arrivals ring ----------
+   Fixed size and deduplicated by source: a 44net allocation is scanned
+   continuously, so an unbounded log is a memory-exhaustion bug. Headers only,
+   never payload - payload is attacker-controlled and has no business here. */
+
+#define ARRIVALS_MAX 16
+
+typedef struct {
+    bool     used;
+    uint8_t  proto;        /* IPPROTO_TCP / IPPROTO_UDP */
+    uint32_t src_ip;       /* network byte order */
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint32_t count;
+    int64_t  last_us;
+} arrival_t;
+
+static arrival_t s_arrivals[ARRIVALS_MAX];
+static SemaphoreHandle_t s_lock;
+static uint32_t s_next_slot;
+
+static void arrival_record(uint8_t proto, uint32_t src_ip, uint16_t src_port, uint16_t dst_port)
+{
+    if (!s_lock) {
+        return;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+
+    for (int i = 0; i < ARRIVALS_MAX; i++) {
+        arrival_t *a = &s_arrivals[i];
+        if (a->used && a->proto == proto && a->src_ip == src_ip && a->dst_port == dst_port) {
+            a->count++;
+            a->src_port = src_port;
+            a->last_us  = esp_timer_get_time();
+            xSemaphoreGive(s_lock);
+            return;
+        }
+    }
+
+    arrival_t *a = &s_arrivals[s_next_slot % ARRIVALS_MAX];
+    s_next_slot++;
+    a->used     = true;
+    a->proto    = proto;
+    a->src_ip   = src_ip;
+    a->src_port = src_port;
+    a->dst_port = dst_port;
+    a->count    = 1;
+    a->last_us  = esp_timer_get_time();
+
+    xSemaphoreGive(s_lock);
+}
+
+/* ---------- peer address of an HTTP request ---------- */
+
+static bool peer_of(httpd_req_t *req, uint32_t *ip, uint16_t *port)
+{
+    int fd = httpd_req_to_sockfd(req);
+    if (fd < 0) {
+        return false;
+    }
+    struct sockaddr_in6 sa;
+    socklen_t len = sizeof(sa);
+    if (getpeername(fd, (struct sockaddr *)&sa, &len) != 0) {
+        return false;
+    }
+    if (sa.sin6_family == AF_INET) {
+        struct sockaddr_in *s4 = (struct sockaddr_in *)&sa;
+        *ip   = s4->sin_addr.s_addr;
+        *port = ntohs(s4->sin_port);
+    } else {
+        /* IPv4-mapped IPv6: the v4 address sits in the last four bytes */
+        memcpy(ip, ((uint8_t *)&sa.sin6_addr) + 12, 4);
+        *port = ntohs(sa.sin6_port);
+    }
+    return true;
+}
+
+static const char *ota_state_str(void)
+{
+    const esp_partition_t *run = esp_ota_get_running_partition();
+    esp_ota_img_states_t st;
+    if (!run || esp_ota_get_state_partition(run, &st) != ESP_OK) {
+        return "unknown";
+    }
+    switch (st) {
+        case ESP_OTA_IMG_VALID:           return "valid";
+        case ESP_OTA_IMG_PENDING_VERIFY:  return "pending";
+        case ESP_OTA_IMG_NEW:             return "new";
+        case ESP_OTA_IMG_INVALID:         return "invalid";
+        case ESP_OTA_IMG_ABORTED:         return "aborted";
+        default:                          return "undefined";
+    }
+}
+
+static int render_status(char *out, size_t len)
+{
+    int64_t now = esp_timer_get_time();
+    int n = snprintf(out, len,
+                     "id=esp32-44net-tester\n"
+                     "version=%s\n"
+                     "ota=%s\n"
+                     "uptime=%llus\n"
+                     "ip=%s\n"
+                     "rssi=%d\n"
+                     "heap=%u\n"
+                     "udp_port=%d\n"
+                     "\narrivals (last %d):\n",
+                     TESTER_VERSION, ota_state_str(),
+                     (unsigned long long)(now / 1000000),
+                     netcfg_ip_str(), netcfg_rssi(),
+                     (unsigned)esp_get_free_heap_size(),
+                     CONFIG_TESTER_UDP_PORT, ARRIVALS_MAX);
+
+    if (!s_lock) {
+        return n;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    for (int i = 0; i < ARRIVALS_MAX && n < (int)len; i++) {
+        arrival_t *a = &s_arrivals[i];
+        if (!a->used) {
+            continue;
+        }
+        struct in_addr in = { .s_addr = a->src_ip };
+        n += snprintf(out + n, len - n, "  %-3s %s:%u -> :%u x%u %llus ago\n",
+                      a->proto == IPPROTO_UDP ? "udp" : "tcp",
+                      inet_ntoa(in), a->src_port, a->dst_port, a->count,
+                      (unsigned long long)((now - a->last_us) / 1000000));
+    }
+    xSemaphoreGive(s_lock);
+    return n;
+}
+
+/* ---------- handlers ---------- */
+
+static esp_err_t status_get(httpd_req_t *req)
+{
+    uint32_t ip = 0;
+    uint16_t port = 0;
+    char you[32] = "unknown";
+    if (peer_of(req, &ip, &port)) {
+        struct in_addr in = { .s_addr = ip };
+        snprintf(you, sizeof(you), "%s:%u", inet_ntoa(in), port);
+        arrival_record(IPPROTO_TCP, ip, port, 80);
+    }
+
+    char *buf = malloc(2048);
+    if (!buf) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    int n = snprintf(buf, 2048, "you=%s\n", you);
+    n += render_status(buf + n, 2048 - n);
+
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_send(req, buf, n);
+    free(buf);
+    return ESP_OK;
+}
+
+static esp_err_t ui_get(httpd_req_t *req)
+{
+    uint32_t ip = 0;
+    uint16_t port = 0;
+    char you[32] = "unknown";
+    if (peer_of(req, &ip, &port)) {
+        struct in_addr in = { .s_addr = ip };
+        snprintf(you, sizeof(you), "%s:%u", inet_ntoa(in), port);
+        arrival_record(IPPROTO_TCP, ip, port, 80);
+    }
+
+    char *buf = malloc(2048);
+    if (!buf) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    int n = snprintf(buf, 2048, "you=%s\n", you);
+    n += render_status(buf + n, 2048 - n);
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_sendstr_chunk(req,
+        "<!doctype html><meta name=viewport content=width=device-width,initial-scale=1>"
+        "<meta http-equiv=refresh content=10>"
+        "<title>44net tester</title>"
+        "<style>body{font-family:ui-monospace,monospace;margin:2rem;white-space:pre}</style>");
+    httpd_resp_sendstr_chunk(req, buf);
+    httpd_resp_sendstr_chunk(req, NULL);
+    free(buf);
+    return ESP_OK;
+}
+
+#if CONFIG_TESTER_OTA_ENABLE
+static esp_err_t ota_post(httpd_req_t *req)
+{
+    /* The firewall rule scoped to your update host is the real control here.
+       This token only guards against a mistake: it crosses plaintext HTTP. */
+    char hdr[128] = { 0 };
+    char want[128];
+    snprintf(want, sizeof(want), "Bearer %s", CONFIG_TESTER_OTA_TOKEN);
+    if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK ||
+        strcmp(hdr, want) != 0) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "bad token\n");
+        return ESP_OK;
+    }
+
+    const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
+    if (!target) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "ota -> %s, %d bytes", target->label, req->content_len);
+
+    esp_ota_handle_t h;
+    if (esp_ota_begin(target, OTA_WITH_SEQUENTIAL_WRITES, &h) != ESP_OK) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    char *buf = malloc(4096);
+    if (!buf) {
+        esp_ota_abort(h);
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    int left = req->content_len;
+    esp_err_t err = ESP_OK;
+    while (left > 0) {
+        int got = httpd_req_recv(req, buf, left > 4096 ? 4096 : left);
+        if (got <= 0) {
+            err = ESP_FAIL;
+            break;
+        }
+        err = esp_ota_write(h, buf, got);
+        if (err != ESP_OK) {
+            break;
+        }
+        left -= got;
+    }
+    free(buf);
+
+    if (err != ESP_OK) {
+        esp_ota_abort(h);
+        ESP_LOGE(TAG, "ota write failed");
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "write failed\n");
+        return ESP_OK;
+    }
+    if (esp_ota_end(h) != ESP_OK || esp_ota_set_boot_partition(target) != ESP_OK) {
+        ESP_LOGE(TAG, "ota finalise failed (bad image?)");
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "image rejected\n");
+        return ESP_OK;
+    }
+
+    httpd_resp_sendstr(req, "ok, rebooting\n");
+    ESP_LOGW(TAG, "rebooting into %s", target->label);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+    return ESP_OK;
+}
+#endif
+
+/* ---------- UDP listener ----------
+   Answers test 4 of docs/test-procedure.md, which sends a UDP probe to an
+   allowed port. Without this the operator still needs tcpdump on the segment. */
+
+static void udp_task(void *arg)
+{
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "udp socket failed");
+        vTaskDelete(NULL);
+        return;
+    }
+    struct sockaddr_in me = {
+        .sin_family      = AF_INET,
+        .sin_port        = htons(CONFIG_TESTER_UDP_PORT),
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+    };
+    if (bind(sock, (struct sockaddr *)&me, sizeof(me)) < 0) {
+        ESP_LOGE(TAG, "udp bind %d failed", CONFIG_TESTER_UDP_PORT);
+        close(sock);
+        vTaskDelete(NULL);
+        return;
+    }
+    ESP_LOGI(TAG, "udp listener on %d", CONFIG_TESTER_UDP_PORT);
+
+    uint8_t buf[256];
+    for (;;) {
+        struct sockaddr_in from;
+        socklen_t fl = sizeof(from);
+        int n = recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr *)&from, &fl);
+        if (n < 0) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+        /* headers only - the payload is discarded unread */
+        arrival_record(IPPROTO_UDP, from.sin_addr.s_addr, ntohs(from.sin_port),
+                       CONFIG_TESTER_UDP_PORT);
+    }
+}
+
+/* ---------- rollback confirmation ---------- */
+
+static void confirm_task(void *arg)
+{
+    int settle_s = (int)(intptr_t)arg;
+    vTaskDelay(pdMS_TO_TICKS(settle_s * 1000));
+
+    const esp_partition_t *run = esp_ota_get_running_partition();
+    esp_ota_img_states_t st;
+    if (run && esp_ota_get_state_partition(run, &st) == ESP_OK &&
+        st == ESP_OTA_IMG_PENDING_VERIFY) {
+        ESP_LOGI(TAG, "image held %d s with WiFi up - marking valid", settle_s);
+        esp_ota_mark_app_valid_cancel_rollback();
+    }
+    vTaskDelete(NULL);
+}
+
+void tester_confirm_after(int settle_s)
+{
+    xTaskCreate(confirm_task, "ota_confirm", 3072, (void *)(intptr_t)settle_s, 4, NULL);
+}
+
+esp_err_t tester_start(void)
+{
+    s_lock = xSemaphoreCreateMutex();
+    if (!s_lock) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    httpd_handle_t srv = NULL;
+    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+    cfg.max_uri_handlers = 8;
+    cfg.lru_purge_enable = true;
+    cfg.recv_wait_timeout = 10;
+    cfg.send_wait_timeout = 10;
+
+    esp_err_t err = httpd_start(&srv, &cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "status httpd failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    httpd_uri_t u_root = { .uri = "/",   .method = HTTP_GET, .handler = status_get };
+    httpd_uri_t u_ui   = { .uri = "/ui", .method = HTTP_GET, .handler = ui_get };
+    httpd_register_uri_handler(srv, &u_root);
+    httpd_register_uri_handler(srv, &u_ui);
+#if CONFIG_TESTER_OTA_ENABLE
+    httpd_uri_t u_ota  = { .uri = "/ota", .method = HTTP_POST, .handler = ota_post };
+    httpd_register_uri_handler(srv, &u_ota);
+#endif
+
+    xTaskCreate(udp_task, "tester_udp", 3072, NULL, 5, NULL);
+    ESP_LOGI(TAG, "status server up, version=%s", TESTER_VERSION);
+    return ESP_OK;
+}

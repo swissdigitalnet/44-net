@@ -162,3 +162,19 @@ routing.
 | 7 | Segment → internal network | dropped, counter matches exactly |
 | 8 | Segment → router services | silent timeout |
 | 9 | Unscoped accepts above the tunnel drop | none |
+
+## Running part of this automatically
+
+Tests 4, 5 and 6 — everything driven from the outside machine — are packaged in
+[test-container.md](test-container.md) as a container you can re-run after any
+change. It refuses to run if its own route to the target leaves via a tunnel,
+so it cannot quietly test from the wrong side.
+
+The rest still has to be done by hand. Tests 1, 2, 3, 7 and 8 originate from the
+router or from the segment, and test 9 is a reading of your rule order that no
+probe can substitute for.
+
+If you need something to aim at before your real node moves onto the segment,
+[esp32-tester.md](esp32-tester.md) describes a small device that holds an
+address, answers, and reports the source address each packet carried — which is
+what separates a reachability failure from a translation failure.

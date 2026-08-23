@@ -1,0 +1,31 @@
+#pragma once
+#include <stdbool.h>
+#include "esp_err.h"
+#include "esp_netif.h"
+
+#define NETCFG_SSID_LEN 33
+#define NETCFG_PASS_LEN 65
+
+typedef struct {
+    char ssid[NETCFG_SSID_LEN];
+    char pass[NETCFG_PASS_LEN];
+} netcfg_creds_t;
+
+/* One-time bring-up of nvs, netif, the default event loop and esp_wifi. */
+esp_err_t netcfg_init(void);
+
+esp_err_t netcfg_load(netcfg_creds_t *out);   /* ESP_ERR_NVS_NOT_FOUND if unset */
+esp_err_t netcfg_save(const netcfg_creds_t *in);
+esp_err_t netcfg_erase(void);
+
+/* Blocks until connected or every attempt is exhausted. */
+bool netcfg_sta_connect(const netcfg_creds_t *c, int max_retry, int per_try_ms);
+
+/* APSTA so the portal can scan while serving. */
+esp_err_t netcfg_ap_start(const char *ssid);
+
+/* true when the BOOT button is held at reset. */
+bool netcfg_boot_button_pressed(void);
+
+const char *netcfg_ip_str(void);   /* "0.0.0.0" until DHCP completes */
+int netcfg_rssi(void);

@@ -1,0 +1,38 @@
+name: build
+
+# Compilation happens here, not on anyone's laptop. The repo carries source
+# and documentation only.
+on:
+  push:
+    paths:
+      - 'ESP32-44net-Tester/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # git describe --tags supplies the version the device reports;
+          # a shallow clone would leave it as "unknown".
+          fetch-depth: 0
+
+      - name: Build firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: latest
+          target: esp32
+          path: 'ESP32-44net-Tester'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-44net-tester
+          path: |
+            ESP32-44net-Tester/build/esp32-44net-tester.bin
+            ESP32-44net-Tester/build/bootloader/bootloader.bin
+            ESP32-44net-Tester/build/partition_table/partition-table.bin
+          if-no-files-found: error

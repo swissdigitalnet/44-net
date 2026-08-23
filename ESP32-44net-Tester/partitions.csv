@@ -1,0 +1,9 @@
+# factory + two OTA slots. Required for CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE:
+# a bad push reverts on the next boot instead of stranding the device.
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+otadata,    data, ota,      0xf000,   0x2000
+phy_init,   data, phy,      0x11000,  0x1000
+factory,    app,  factory,  0x20000,  1400K
+ota_0,      app,  ota_0,    ,         1400K
+ota_1,      app,  ota_1,    ,         1400K

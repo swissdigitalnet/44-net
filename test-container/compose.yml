@@ -1,0 +1,23 @@
+# network_mode: host is deliberate.
+#
+# The whole point of these tests is which source address arrives at the far
+# end, and what the router's firewall does with it. Running inside Docker's
+# default bridge puts a NAT between the probe and the wire, which is exactly
+# the kind of translation this procedure exists to detect. Host mode keeps the
+# packets honest.
+
+services:
+  test:
+    build: .
+    image: 44net-test-runner
+    network_mode: host
+    env_file: [.env]
+    # docker compose run --rm test
+
+  ota:
+    build: .
+    image: 44net-test-runner
+    network_mode: host
+    env_file: [.env]
+    entrypoint: ["/opt/44net/ota-push.sh"]
+    # docker compose run --rm ota
