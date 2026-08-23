@@ -145,7 +145,9 @@ static int render_status(char *out, size_t len)
         struct in_addr in = { .s_addr = a->src_ip };
         n += snprintf(out + n, len - n, "  %-3s %s:%u -> :%u x%u %llus ago\n",
                       a->proto == IPPROTO_UDP ? "udp" : "tcp",
-                      inet_ntoa(in), a->src_port, a->dst_port, a->count,
+                      inet_ntoa(in),
+                      (unsigned)a->src_port, (unsigned)a->dst_port,
+                      (unsigned)a->count,
                       (unsigned long long)((now - a->last_us) / 1000000));
     }
     xSemaphoreGive(s_lock);
@@ -161,7 +163,7 @@ static esp_err_t status_get(httpd_req_t *req)
     char you[32] = "unknown";
     if (peer_of(req, &ip, &port)) {
         struct in_addr in = { .s_addr = ip };
-        snprintf(you, sizeof(you), "%s:%u", inet_ntoa(in), port);
+        snprintf(you, sizeof(you), "%s:%u", inet_ntoa(in), (unsigned)port);
         arrival_record(IPPROTO_TCP, ip, port, 80);
     }
 
@@ -187,7 +189,7 @@ static esp_err_t ui_get(httpd_req_t *req)
     char you[32] = "unknown";
     if (peer_of(req, &ip, &port)) {
         struct in_addr in = { .s_addr = ip };
-        snprintf(you, sizeof(you), "%s:%u", inet_ntoa(in), port);
+        snprintf(you, sizeof(you), "%s:%u", inet_ntoa(in), (unsigned)port);
         arrival_record(IPPROTO_TCP, ip, port, 80);
     }
 
@@ -231,7 +233,7 @@ static esp_err_t ota_post(httpd_req_t *req)
         httpd_resp_send_500(req);
         return ESP_FAIL;
     }
-    ESP_LOGI(TAG, "ota -> %s, %d bytes", target->label, req->content_len);
+    ESP_LOGI(TAG, "ota -> %s, %u bytes", target->label, (unsigned)req->content_len);
 
     esp_ota_handle_t h;
     if (esp_ota_begin(target, OTA_WITH_SEQUENTIAL_WRITES, &h) != ESP_OK) {
