@@ -250,6 +250,7 @@ static int render_status(char *out, size_t len)
                      "ip=%s\n"
                      "rssi=%d\n"
                      "heap=%u\n"
+                     "http_port=%d\n"
                      "udp_port=%d\n"
                      "\narrivals (last %d):\n",
                      TESTER_VERSION, ota_state_str(),
@@ -446,8 +447,6 @@ static void update_task(void *arg)
     };
     esp_https_ota_config_t cfg = {
         .http_config = &http,
-        /* release assets redirect to a storage host */
-        .partial_http_download = false,
     };
 
     esp_err_t err = esp_https_ota(&cfg);
