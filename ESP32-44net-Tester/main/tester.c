@@ -475,22 +475,19 @@ static esp_err_t update_get(httpd_req_t *req)
     if (!peer_of(req, &ip, &port) || !netcfg_is_local(ip)) {
         httpd_resp_set_status(req, "403 Forbidden");
         httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-        httpd_resp_sendstr(req, "updates can only be triggered from the local segment
-");
+        httpd_resp_sendstr(req, "updates can only be triggered from the local segment\n");
         return ESP_OK;
     }
     if (s_updating) {
         httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-        httpd_resp_sendstr(req, "already updating
-");
+        httpd_resp_sendstr(req, "already updating\n");
         return ESP_OK;
     }
 
     xTaskCreate(update_task, "ota_pull", 8192, NULL, 5, NULL);
     httpd_resp_set_type(req, "text/plain");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    httpd_resp_sendstr(req, "update started - watch version= on /
-");
+    httpd_resp_sendstr(req, "update started - watch version= on /\n");
     return ESP_OK;
 }
 #endif
