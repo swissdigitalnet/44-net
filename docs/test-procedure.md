@@ -108,9 +108,13 @@ nc -nzv -w 6 <your-44net-address> 22
 
 Expect silent timeouts. Silence is correct — a refusal would tell a scanner something is there.
 
-Note the contrast with test 5: an allowed port to an empty address answers `No route to host`,
-a blocked port to a live address says nothing at all. That difference is the proof your firewall
-discriminates by port and not merely by host.
+If you left test 5's ICMP error enabled, note the contrast: an allowed port to an empty address
+answers `No route to host` while a blocked port to a live address says nothing, and that
+difference proves your firewall discriminates by port and not merely by host.
+
+If you suppressed it, both are silent — which is the quieter posture and the one that tells a
+scanner least. You lose the contrast as evidence; put a second device on the segment to prove
+range-wide reachability instead.
 
 ### 7. The 44net segment into your internal network
 
@@ -169,7 +173,7 @@ routing.
 | 2 | Segment → gateway | reachable |
 | 3 | LAN → segment | reachable, source address preserved |
 | 4 | Outside → allowed port | delivered, visible in capture |
-| 5 | Outside → allowed port, empty address | accepted, `No route to host` |
+| 5 | Outside → allowed port, empty address | `No route to host`, or silent if you suppress it |
 | 6 | Outside → blocked port | silent timeout |
 | 7 | Segment → internal network | dropped, counter matches exactly |
 | 8 | Segment → router services | silent timeout |
