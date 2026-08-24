@@ -37,18 +37,33 @@ config TESTER_UDP_PORT
       Answers test 4 of docs/test-procedure.md, which probes an allowed UDP
       port. Arrivals are recorded (headers only) and shown on the status page.
 
+config TESTER_HTTP_PORT
+    int "TCP port for the status pages"
+    default 8044
+    help
+      Deliberately not 80. Port 80 is the most heavily scanned port on the
+      internet, and a 44net allocation is public space. Moving off it cuts the
+      background noise; it is not concealment, and it is not a substitute for
+      keeping the port closed except during a test.
+
 config TESTER_OTA_ENABLE
-    bool "Enable the POST /ota update command"
+    bool "Enable pulling firmware updates"
     default y
     help
-      Writes flash. Protect it with a firewall rule scoped to the source
-      address of your update host; the token below is a guard against
-      mistakes, not against an attacker.
+      The device fetches the image itself over TLS. Nothing is pushed to it, so
+      no inbound port is needed for updates.
 
-config TESTER_OTA_TOKEN
-    string "Bearer token required by POST /ota"
-    default "change-me"
+      Requires outbound internet from the segment. A site whose 44net segment
+      reaches only 44net cannot use this - flash over serial instead.
+
+config TESTER_UPDATE_URL
+    string "URL of the firmware image to fetch"
+    default "https://github.com/swissdigitalnet/44-net/releases/latest/download/esp32-44net-tester.bin"
     depends on TESTER_OTA_ENABLE
+    help
+      Triggered by GET /update, which is refused unless the caller is on the
+      same segment - so an update cannot be started from the open internet even
+      while a test window has the port open.
 
 config TESTER_CHECK_44NET
     string "A 44net host to try reaching (blank to skip)"

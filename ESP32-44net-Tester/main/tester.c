@@ -8,6 +8,9 @@
 #include "netcfg.h"
 #include "esp_http_server.h"
 #include "esp_ota_ops.h"
+#include "esp_https_ota.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_log.h"
@@ -253,7 +256,7 @@ static int render_status(char *out, size_t len)
                      (unsigned long long)(now / 1000000),
                      netcfg_ip_str(), netcfg_rssi(),
                      (unsigned)esp_get_free_heap_size(),
-                     CONFIG_TESTER_UDP_PORT, ARRIVALS_MAX);
+                     CONFIG_TESTER_HTTP_PORT, CONFIG_TESTER_UDP_PORT, ARRIVALS_MAX);
 
     if (!s_lock) {
         return n;
@@ -413,74 +416,82 @@ static esp_err_t run_get(httpd_req_t *req)
 }
 
 #if CONFIG_TESTER_OTA_ENABLE
-static esp_err_t ota_post(httpd_req_t *req)
+/* ---------- updates: the device fetches, nothing pushes to it ----------
+
+   An earlier version accepted POST /ota. That required a permanently open
+   inbound port on public, continuously scanned address space, guarded by a
+   bearer token crossing plaintext HTTP - and whoever reached that port decided
+   what ran on the device.
+
+   Pulling inverts it. Nothing needs to be open inbound at all, and the device
+   only ever accepts what the release server hands it over TLS.
+
+   The cost, which is real: this needs outbound internet from the segment. A
+   site that keeps its 44net segment strictly 44net-only cannot use it and
+   should flash over serial instead. */
+
+static volatile bool s_updating;
+static char s_update_result[96] = "not attempted";
+
+static void update_task(void *arg)
 {
-    /* The firewall rule scoped to your update host is the real control here.
-       This token only guards against a mistake: it crosses plaintext HTTP. */
-    char hdr[128] = { 0 };
-    char want[128];
-    snprintf(want, sizeof(want), "Bearer %s", CONFIG_TESTER_OTA_TOKEN);
-    if (httpd_req_get_hdr_value_str(req, "Authorization", hdr, sizeof(hdr)) != ESP_OK ||
-        strcmp(hdr, want) != 0) {
-        httpd_resp_set_status(req, "401 Unauthorized");
-        httpd_resp_sendstr(req, "bad token\n");
+    s_updating = true;
+    ESP_LOGI(TAG, "update: fetching %s", CONFIG_TESTER_UPDATE_URL);
+
+    esp_http_client_config_t http = {
+        .url               = CONFIG_TESTER_UPDATE_URL,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .timeout_ms        = 20000,
+        .keep_alive_enable = true,
+    };
+    esp_https_ota_config_t cfg = {
+        .http_config = &http,
+        /* release assets redirect to a storage host */
+        .partial_http_download = false,
+    };
+
+    esp_err_t err = esp_https_ota(&cfg);
+    if (err == ESP_OK) {
+        snprintf(s_update_result, sizeof(s_update_result), "ok, rebooting");
+        ESP_LOGW(TAG, "update: written, rebooting");
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_restart();
+    }
+
+    snprintf(s_update_result, sizeof(s_update_result), "failed: %s",
+             esp_err_to_name(err));
+    ESP_LOGE(TAG, "update: %s", s_update_result);
+    s_updating = false;
+    vTaskDelete(NULL);
+}
+
+/* Triggering is deliberately local-only. Anything arriving through the tunnel
+   is refused, so an update cannot be started from the open internet even while
+   a test window has the port open. */
+static esp_err_t update_get(httpd_req_t *req)
+{
+    uint32_t ip = 0;
+    uint16_t port = 0;
+
+    if (!peer_of(req, &ip, &port) || !netcfg_is_local(ip)) {
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        httpd_resp_sendstr(req, "updates can only be triggered from the local segment
+");
+        return ESP_OK;
+    }
+    if (s_updating) {
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+        httpd_resp_sendstr(req, "already updating
+");
         return ESP_OK;
     }
 
-    const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
-    if (!target) {
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
-    ESP_LOGI(TAG, "ota -> %s, %u bytes", target->label, (unsigned)req->content_len);
-
-    esp_ota_handle_t h;
-    if (esp_ota_begin(target, OTA_WITH_SEQUENTIAL_WRITES, &h) != ESP_OK) {
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
-
-    char *buf = malloc(4096);
-    if (!buf) {
-        esp_ota_abort(h);
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
-
-    int left = req->content_len;
-    esp_err_t err = ESP_OK;
-    while (left > 0) {
-        int got = httpd_req_recv(req, buf, left > 4096 ? 4096 : left);
-        if (got <= 0) {
-            err = ESP_FAIL;
-            break;
-        }
-        err = esp_ota_write(h, buf, got);
-        if (err != ESP_OK) {
-            break;
-        }
-        left -= got;
-    }
-    free(buf);
-
-    if (err != ESP_OK) {
-        esp_ota_abort(h);
-        ESP_LOGE(TAG, "ota write failed");
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "write failed\n");
-        return ESP_OK;
-    }
-    if (esp_ota_end(h) != ESP_OK || esp_ota_set_boot_partition(target) != ESP_OK) {
-        ESP_LOGE(TAG, "ota finalise failed (bad image?)");
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "image rejected\n");
-        return ESP_OK;
-    }
-
-    httpd_resp_sendstr(req, "ok, rebooting\n");
-    ESP_LOGW(TAG, "rebooting into %s", target->label);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    esp_restart();
+    xTaskCreate(update_task, "ota_pull", 8192, NULL, 5, NULL);
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, "update started - watch version= on /
+");
     return ESP_OK;
 }
 #endif
@@ -561,6 +572,7 @@ esp_err_t tester_start(void)
     cfg.recv_wait_timeout = 10;
     cfg.send_wait_timeout = 10;
 
+    cfg.server_port = CONFIG_TESTER_HTTP_PORT;
     esp_err_t err = httpd_start(&srv, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "status httpd failed: %s", esp_err_to_name(err));
@@ -574,11 +586,12 @@ esp_err_t tester_start(void)
     httpd_register_uri_handler(srv, &u_ui);
     httpd_register_uri_handler(srv, &u_run);
 #if CONFIG_TESTER_OTA_ENABLE
-    httpd_uri_t u_ota  = { .uri = "/ota", .method = HTTP_POST, .handler = ota_post };
-    httpd_register_uri_handler(srv, &u_ota);
+    httpd_uri_t u_upd  = { .uri = "/update", .method = HTTP_GET, .handler = update_get };
+    httpd_register_uri_handler(srv, &u_upd);
 #endif
 
     xTaskCreate(udp_task, "tester_udp", 3072, NULL, 5, NULL);
-    ESP_LOGI(TAG, "status server up, version=%s", TESTER_VERSION);
+    ESP_LOGI(TAG, "status server up on port %d, version=%s",
+             CONFIG_TESTER_HTTP_PORT, TESTER_VERSION);
     return ESP_OK;
 }

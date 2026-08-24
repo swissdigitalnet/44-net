@@ -35,4 +35,8 @@ void netcfg_watch_reset_button(int hold_ms);
 
 const char *netcfg_ip_str(void);   /* "0.0.0.0" until DHCP completes */
 const char *netcfg_gw_str(void);   /* the DHCP-supplied gateway */
+
+/* true when addr (network byte order) is on the same subnet as this device.
+   Used to tell a caller on the local segment from one arriving via a tunnel. */
+bool netcfg_is_local(uint32_t addr);
 int netcfg_rssi(void);

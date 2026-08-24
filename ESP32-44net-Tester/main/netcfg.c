@@ -24,6 +24,7 @@ static bool s_ap_started;
 static int  s_retries_left;
 static char s_ip[16] = "0.0.0.0";
 static char s_gw[16] = "0.0.0.0";
+static uint32_t s_ip_raw, s_mask_raw;
 
 static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -43,6 +44,8 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&e->ip_info.ip));
         snprintf(s_gw, sizeof(s_gw), IPSTR, IP2STR(&e->ip_info.gw));
+        s_ip_raw   = e->ip_info.ip.addr;
+        s_mask_raw = e->ip_info.netmask.addr;
         ESP_LOGI(TAG, "got %s", s_ip);
         xEventGroupSetBits(s_events, BIT_CONNECTED);
     }
@@ -199,6 +202,14 @@ void netcfg_watch_reset_button(int hold_ms)
 
 const char *netcfg_ip_str(void) { return s_ip; }
 const char *netcfg_gw_str(void) { return s_gw; }
+
+bool netcfg_is_local(uint32_t addr)
+{
+    if (!s_mask_raw) {
+        return false;
+    }
+    return (addr & s_mask_raw) == (s_ip_raw & s_mask_raw);
+}
 
 int netcfg_rssi(void)
 {
