@@ -42,14 +42,67 @@ own MTU. The arithmetic is in [MTU: the part that catches everyone](#mtu-the-par
 
 ## In the 44Net Connect portal
 
-Covered in full in the [44Net Connect introduction](../README.md#-44net-connect--an-introduction),
-including the part the official documentation leaves out. In short:
+[connect.44net.cloud](https://connect.44net.cloud) is ARDC's service for delivering 44net
+address space to operators who have no other way to receive it. It builds a WireGuard tunnel
+from your router to a point of presence and routes your allocation down it. Free, for licensed
+amateurs, best-effort — and it works from behind NAT and CGNAT.
 
-- Generate your WireGuard keypair **on the router** and paste only the public key.
-- **Two** portal steps, not one. *Tunnels* creates the tunnel; *Networks* associates your
-  allocated prefix with it so the gateway routes it to you.
-- Skip the second and the tunnel handshakes perfectly while your allocation stays unreachable —
-  which looks like a broken tunnel and is not.
+Worth being clear about what it is not. In ARDC's own words: *"The WireGuard tunnel is
+transport, not cover. It is not designed for privacy or anonymity."* Your allocation becomes
+publicly routed and publicly scanned. Reachability is the point, and it cuts both ways — which
+is what the firewall section below is for.
+
+### Before you open the portal
+
+| | |
+|---|---|
+| A 44Net Portal account | [portal.ampr.org](https://portal.ampr.org), callsign verified |
+| An allocation | Requested from [ARDC](https://www.ampr.org/). A `/28` gives 13 usable addresses |
+
+**Generate the WireGuard keypair on your router first.** The portal will hand you a complete
+configuration including a private key. That is convenient, and it means your private key was
+generated somewhere else and travelled to you over the web. Paste in a public key instead; the
+private key should never leave the router.
+
+### Two steps, not one
+
+The [Quick Start](https://wiki.ampr.org/wiki/44Net_Connect/Quick_Start) walks you through
+creating a tunnel and ends at "confirm handshake". Follow it exactly and you have a working
+tunnel carrying **one address** — enough for a single machine, and not what an AREDN node
+needs. Your node has to hold an address out of your own allocation, and getting that allocation
+routed to you is a separate step the official documentation does not describe.
+
+**1 · Tunnels.** Request a tunnel, choose a region and endpoint node — it carries all your 44net
+traffic, so pick one near you — name it, and paste your **public key**. The portal returns a
+wg-quick configuration containing the three values the router needs:
+
+| From the portal | Used as |
+|---|---|
+| Gateway public key | the peer's public key |
+| Endpoint address and port | `endpoint-address` / `endpoint-port` |
+| Address for your tunnel interface | a `/32` on the tunnel interface |
+
+**2 · Networks.** Associate your allocated prefix with the tunnel you just created, so the
+gateway routes it down that tunnel to you.
+
+**Skipping the second step is the classic failure.** The tunnel comes up, handshakes on
+schedule, and looks entirely healthy — while nothing is routed to you and your allocation stays
+unreachable. It presents as a broken tunnel and is not one. If `wg show` looks right and your
+allocation answers nothing, check this before you start rewriting router configuration.
+
+> The Networks page requires a login and is not covered by the public wiki, so the description
+> above is inferred from the resulting configuration rather than read off the page. Corrections
+> welcome.
+
+### What the portal will not tell you
+
+**The gateway source-filters your traffic.** Packets you send whose source address is outside
+your allocation are dropped — including ICMP errors your router generates itself. Undocumented,
+and it presents as an unexplained timeout.
+
+**MTU is never mentioned anywhere in the official documentation**, and for AREDN it is the
+thing most likely to defeat you: your tunnels to peers run *inside* this one. See
+[MTU: the part that catches everyone](#mtu-the-part-that-catches-everyone) — do not skip it.
 
 ## Router configuration
 
