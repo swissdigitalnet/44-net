@@ -202,15 +202,15 @@ timeout, join attempts, BOOT GPIO, UDP port, OTA enable and token.
 Confirmed working on real hardware, on an ESP32-WROOM-32:
 
 ```
-you=192.0.2.6:1189      source echo, caller's real address
+you=192.0.2.10:1189      source echo, caller's real address
 id=esp32-44net-tester
 version=v0.1.0            git describe, injected at build time
 ota=valid                 rollback confirmation completed
 uptime=42s  rssi=-42  heap=207796  udp_port=5000
 
 arrivals (last 16):
-  tcp 192.0.2.6:1189  -> :80    x1
-  udp 192.0.2.160:49862 -> :5000  x1
+  tcp 192.0.2.10:1189  -> :80    x1
+  udp 192.0.2.20:49862 -> :5000  x1
 ```
 
 The full update chain has been exercised end to end: CI built a tagged release,
