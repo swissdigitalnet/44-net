@@ -13,11 +13,3 @@ services:
     network_mode: host
     env_file: [.env]
     # docker compose run --rm test
-
-  ota:
-    build: .
-    image: 44net-test-runner
-    network_mode: host
-    env_file: [.env]
-    entrypoint: ["/opt/44net/ota-push.sh"]
-    # docker compose run --rm ota

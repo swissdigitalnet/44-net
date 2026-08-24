@@ -328,6 +328,7 @@ If a peer is unreachable, disable the tunnel rather than leaving it connected.
 | [docs/return-path.md](docs/return-path.md) | Getting the answer back out — why inbound works and replies vanish |
 | [docs/esp32-tester.md](docs/esp32-tester.md) | A small purpose-built target to put on the segment and aim at |
 | [docs/test-container.md](docs/test-container.md) | Running the inbound half of the procedure from a container, outside your network |
+| [docs/test-window.md](docs/test-window.md) | Opening a port for a test and having it close itself again |
 
 ## 🔗 References
 

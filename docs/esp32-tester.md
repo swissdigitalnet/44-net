@@ -86,10 +86,17 @@ there is nothing for a firmware update to discard.
 ## What it serves
 
 ```
-GET  /      text/plain, for curl and for reading
-GET  /ui    the same data, phone-shaped, refreshing every 10 s
-POST /ota   firmware update command
+GET  /         text/plain, for curl and for reading
+GET  /ui       the same data, phone-shaped, refreshing every 10 s
+GET  /run      run the active checks now and show the verdicts
+GET  /update   fetch the latest release and install it
 ```
+
+All four are on **`CONFIG_TESTER_HTTP_PORT`, default 8044** — deliberately not
+80. Port 80 is the most heavily scanned port on the internet and a 44net
+allocation is public space. This is not concealment and it is not a substitute
+for keeping the port closed except during a test; see
+[test-window.md](test-window.md).
 
 `/ui` exists to be read on a handset joined to the same segment, standing next
 to the device: dark, large type, no horizontal scroll, and the caller's address
@@ -110,17 +117,19 @@ you read the page from a phone.
 ```
 you=203.0.113.9:41022
 id=esp32-44net-tester
-version=v0.3.0
+version=v0.5.2
 ota=valid
+update=not attempted
 uptime=1234s
 ip=<dhcp address>
 rssi=-52
 heap=214032
 udp_port=5000
+http_port=8044
 
 arrivals (last 16):
   udp 203.0.113.9:41022 -> :5000 x3 12s ago
-  tcp 198.51.100.7:52637 -> :80 x1 48s ago
+  tcp 198.51.100.7:52637 -> :8044 x1 48s ago
 ```
 
 It also listens on **UDP** (`CONFIG_TESTER_UDP_PORT`, default 5000), because
@@ -133,7 +142,9 @@ bug waiting to be triggered by someone else. Only packet headers are recorded;
 payload is attacker-controlled and is discarded unread. Output is plaintext
 throughout, so there is nothing to escape.
 
-**No TLS.** No certificate can be valid for a bare address, so every visit
+**No TLS on what it serves.** (It is a TLS *client* when it pulls firmware —
+that is the direction where a certificate can actually be validated.) No
+certificate can be valid for a bare address, so every visit
 would train you to click through a browser warning; mbedTLS costs flash and
 RAM on a device that is scanned continuously, and TLS handshakes are a cheap
 way to exhaust an ESP32. The content is a reachability echo with no secrets in
@@ -149,30 +160,43 @@ deployed device was left with no remote update path at all. It had to be
 recovered with a cable. Deploy the new mechanism, confirm a real update lands,
 and only then take the old one away.
 
+**The device pulls; nothing is pushed to it.** `GET /update` makes it fetch
+`CONFIG_TESTER_UPDATE_URL` — by default the latest GitHub release — over TLS,
+write it, and reboot.
 
-The device offers the update; something outside initiates it. That keeps the
-44net segment free of any outbound internet permission — see
-[test-container.md](test-container.md), which fetches the latest release and
-pushes it.
+That direction is the whole point. A push endpoint is an inbound firmware-write
+port on public address space, and a bearer token crossing plaintext HTTP does
+not change what it is. Pulling needs **no inbound port at all**, so updating is
+not a reason to open one.
 
-```
-POST /ota
-Authorization: Bearer <CONFIG_TESTER_OTA_TOKEN>
-Content-Type: application/octet-stream
-<firmware.bin>
-```
+`/update` is refused unless the caller is on the same segment, so even with a
+[test window](test-window.md) open, an update cannot be triggered from the
+internet. What it does need is **outbound** internet from the segment. A site
+whose 44net segment reaches only 44net cannot use this — flash over serial.
 
-**Scope the firewall rule for this port to the source address of your update
-host.** That is the access control. The token crosses plaintext HTTP and only
-protects against a mistake — not against anyone who can observe or spoof.
+Two implementation details that cost real time to find:
 
-**Rollback is enabled and is the reason this is safe to do remotely.** A pushed
+**The transmit buffer has to be enlarged.** A release download redirects to a
+signed storage URL well over a kilobyte long, and `esp_http_client`'s default
+512-byte TX buffer cannot write that request line. The symptom is not an error:
+the client completes TLS, reads a few kilobytes, closes the connection and
+returns failure — which looks exactly like a network problem and is not.
+
+**`update=` can report failure but never success.** The result string lives in
+RAM and a successful update ends in a reboot, so after one it reads
+`not attempted` again. That asymmetry is the right way round: the case you need
+to diagnose remotely is the one where it did not work, and there the device is
+still up to tell you. To confirm a success, watch `ota=` instead.
+
+**Rollback is enabled and is the reason this is safe to do remotely.** A new
 image marks itself valid only after it has joined WiFi, bound its listener and
 held for 30 seconds. If it cannot, the bootloader restores the previous image
 on the next boot and the old firmware — still reachable — is waiting for you to
-try again. Without this, one bad push means a visit to the site.
+try again.
 
-`ota=` reports that state, so `pending` means a push has not yet settled.
+`ota=` reports that state: `pending` means a freshly written image has booted
+and not yet settled, and it is the only positive evidence that an update
+actually landed.
 
 ## Firewall rules it needs
 
@@ -180,15 +204,14 @@ Two, both scoped as narrowly as the procedure recommends — placed above your
 tunnel's catch-all drop:
 
 ```
-accept  in-interface=<tunnel>  dst-address=<device>  proto=tcp  dst-port=80
+accept  in-interface=<tunnel>  dst-address=<device>  proto=tcp  dst-port=8044
 accept  in-interface=<tunnel>  dst-address=<device>  proto=udp  dst-port=<udp-port>
 ```
 
-and, only if you use OTA:
-
-```
-accept  in-interface=<tunnel>  dst-address=<device>  proto=tcp  dst-port=80  src-address=<update-host>
-```
+**And only while you are testing.** These are not permanent rules. Add them for
+a session, remove them after, and confirm from outside that they are gone —
+[test-window.md](test-window.md) is that discipline written down. Updating the
+device needs no rule at all, because it pulls.
 
 Never a subnet-wide accept, and do not add the segment to your LAN interface
 list.
@@ -199,11 +222,12 @@ GitHub Actions builds every push and attaches the binary to a tag as a release.
 There is no local toolchain to install and no build output in the repository.
 
 ```
-git tag v0.3.0 && git push --tags     # produces a release with esp32-44net-tester.bin
+git tag v0.5.2 && git push --tags     # produces a release with esp32-44net-tester.bin
 ```
 
 Configuration lives in `menuconfig` under **44net Tester**: AP SSID, portal
-timeout, join attempts, BOOT GPIO, UDP port, OTA enable and token.
+timeout, join attempts, BOOT GPIO, UDP port, HTTP port, update URL, and the
+three optional hosts the active checks aim at.
 
 ## What has been verified, and what has not
 
@@ -212,25 +236,36 @@ Confirmed working on real hardware, on an ESP32-WROOM-32:
 ```
 you=192.0.2.10:1189      source echo, caller's real address
 id=esp32-44net-tester
-version=v0.1.0            git describe, injected at build time
+version=v0.5.2            git describe, injected at build time
 ota=valid                 rollback confirmation completed
 uptime=42s  rssi=-42  heap=207796  udp_port=5000
 
 arrivals (last 16):
-  tcp 192.0.2.10:1189  -> :80    x1
+  tcp 192.0.2.10:1189  -> :8044  x1
   udp 192.0.2.20:49862 -> :5000  x1
 ```
 
-The full update chain has been exercised end to end: CI built a tagged release,
-the container fetched it, pushed it over the air, and the device came back
-reporting the new version and moved from `ota=pending` to `ota=valid` after its
-settle period. The rollback path is therefore live, not theoretical.
+The full update chain has been exercised end to end. `GET /update` on a device
+running the current release made it fetch roughly a megabyte from GitHub
+through the redirect chain over TLS, write it, and reboot:
 
-**Not yet verified: the device has only ever been tested from inside a LAN.**
-Everything above proves the firmware. None of it proves the path across a
-gateway tunnel — the `you=` echo showing an internet-sourced address, the
-inbound firewall rule, or the POP's source filtering. That needs the device on
-a real 44net segment with a machine outside your network probing it.
+```
+t+12s   version=v0.5.2  ota=valid       before
+t+24s   version=v0.5.2  ota=pending     a freshly written image booted
+t+60s   version=v0.5.2  ota=valid       settled and confirmed
+```
+
+`ota=pending` appears only when a newly written image boots, which is what
+makes this evidence rather than inference. The version did not change because
+the device fetched the release it was already running — the point was the
+transport, not the payload. The rollback path is therefore live, not
+theoretical.
+
+**Also verified across a real gateway tunnel.** The device has held an address
+on a 44net segment and answered a machine on the open internet, with the `you=`
+echo showing that caller's real address — which is what separates a
+reachability failure from a translation failure, and what the POP's source
+filtering would otherwise hide.
 
 ## A word on leaving it running
 

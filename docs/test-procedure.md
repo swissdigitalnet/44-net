@@ -13,6 +13,9 @@ lands. Run it after any firewall or routing change.
   your 44net segment directly and never crosses the gateway tunnel, so it cannot test the
   inbound path at all. A cheap VPS works.
 - Access to your router's firewall counters.
+- A way to open the port you are testing **and close it again afterwards**. The
+  open state is part of the test, not part of normal operation — see
+  [test-window.md](test-window.md).
 - Something on the 44net segment to aim at. Before your real node moves there, any spare host
   with an address in the range will do.
 
@@ -185,6 +188,10 @@ Tests 4, 5 and 6 — everything driven from the outside machine — are packaged
 [test-container.md](test-container.md) as a container you can re-run after any
 change. It refuses to run if its own route to the target leaves via a tunnel,
 so it cannot quietly test from the wrong side.
+
+When the run is finished, close whatever you opened for it and confirm from
+outside that it is closed. That last check takes six seconds and catches a
+reload that silently failed.
 
 The rest still has to be done by hand. Tests 1, 2, 3, 7 and 8 originate from the
 router or from the segment, and test 9 is a reading of your rule order that no

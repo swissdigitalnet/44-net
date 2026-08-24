@@ -48,7 +48,9 @@ docker compose build
 | `UDP_PORT` | UDP port your firewall permits and the target listens on |
 | `ALLOWED_PORT` | a TCP port your firewall permits inbound |
 | `BLOCKED_PORT` | a TCP port it must block |
-| `GITHUB_REPO`, `OTA_TOKEN` | update push only |
+
+Nothing here concerns firmware updates. The tester pulls its own image from
+GitHub over TLS, so there is no push to configure and no inbound port for one.
 
 Nothing site-specific is baked into the image.
 
@@ -85,20 +87,26 @@ docker compose run --rm test
 | Route is not a tunnel | preflight | this host is genuinely outside |
 | Outside → allowed port | 4 | device answers, and its `you=` matches your real address |
 | Outside → allowed UDP port | 4 | probe appears in the device's arrivals list |
-| Outside → allowed port, empty address | 5 | `No route to host` |
-| Outside → allowed port, excluded host | 5 | silent timeout |
-| Outside → blocked port | 6 | silent timeout |
+| Outside → allowed port, empty address | 3a / 5 | silence, or `No route to host` |
+| Outside → allowed port, excluded host | 3b / 5 | silent timeout |
+| Outside → blocked port | 4 / 6 | silent timeout |
 
-Two of those results are counter-intuitive and worth restating, because the
-procedure makes the same point:
+Three of those results are counter-intuitive and worth restating, because the
+procedure makes the same points:
 
-**`No route to host` is a pass** on an empty address. The router accepted the
-packet, tried to deliver it on the segment, and found nothing there — which
-means the rule permits by **port across the range**, so any device that appears
-on the segment later is reachable without editing firewall rules. A silent
-timeout here means the opposite: the accepts are pinned to particular
-addresses, and a device that joins tomorrow will be invisible until someone
-remembers to widen them.
+**On an empty address, silence is the pass — and it is also the less
+informative answer.** `No route to host` would prove more: it means the router
+accepted the packet, tried to deliver it on the segment, and found nobody
+there, so the rule permits by **port across the range** and any device that
+appears later is reachable without touching the firewall.
+
+But producing that error means the router answers the internet about addresses
+nobody is using, which hands a scanner a map of which parts of your allocation
+are live. That disclosure is not worth a passing test, so the deliberate choice
+here is silence — see [return-path.md](return-path.md) for what is suppressed
+and why. The runner accepts silence and says plainly that it cannot confirm
+range-wide reachability from outside. To confirm it, put a second device on the
+segment and see whether it is reachable without a rule change.
 
 **The same result is a failure on an excluded host.** Set `EXCLUDED` to an
 address you have deliberately kept off 44net and test 3b checks it stays that
@@ -106,15 +114,9 @@ way. `No route to host` there means nothing is excluding it — the router
 accepted the packet and merely found nobody home, so the moment a device takes
 that address it is exposed. Only silence proves exclusion.
 
-The two are the same probe against different addresses, and between them they
-show that the firewall discriminates by address as well as by port.
-
 **Silence is a pass, on a blocked port.** A refusal would tell a scanner
 something is there. If a blocked port answers `No route to host` instead, your
 firewall is accepting it and only the absence of a host is hiding you.
-
-The contrast between those two is the actual proof that your rules discriminate
-by port and not merely by address.
 
 ## It refuses to pretend
 
@@ -146,19 +148,20 @@ must-fail direction still has to be checked by hand.
 
 Run those after any firewall change. This container covers the inbound half.
 
-## Pushing firmware
+## Firmware updates are not this container's job
 
-```bash
-docker compose run --rm ota
-```
+There used to be a `docker compose run --rm ota` here that fetched the latest
+release and pushed it to the device. It is gone, along with the inbound port it
+needed.
 
-Fetches the latest published release, compares it with the version the device
-reports, and pushes it if they differ. It refuses when the device reports
-`ota=pending` — a previous push has not settled, and flashing over it would
-discard the evidence of what went wrong. `FORCE=1` overrides.
+The device pulls its own firmware from GitHub over TLS now. Nothing is pushed
+to it, so there is no update port to open, nothing to scope to this host's
+address, and no bearer token crossing plaintext HTTP. Trigger it with
+`GET /update` **from the segment** — the device refuses callers that are not on
+it, so an update cannot be started from the internet even during a test window.
+See [esp32-tester.md](esp32-tester.md).
 
-After pushing it waits for the device to reboot, rejoin, and report both the
-new version and `ota=valid`. If it never does, the bootloader restores the
-previous image on the next boot and the old firmware should still answer.
-
-The host running this must be the one your OTA firewall rule names as source.
+The sequencing lesson is recorded there too, because it cost a site visit: the
+push endpoint was removed in the same release that introduced pulling, before
+pulling had been proven, and the deployed device was left with no remote update
+path at all. Prove the new mechanism works before you take the old one away.
