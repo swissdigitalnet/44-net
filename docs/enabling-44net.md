@@ -38,42 +38,18 @@ about 20 bytes, so it leaves far more room for tunnels carried inside it — but
 public address and a router that passes IP protocol 4.
 
 That 40-byte difference decides whether other operators can reach you without changing their
-own MTU. See [tunnels.md](tunnels.md) for the arithmetic.
+own MTU. The arithmetic is in [MTU: the part that catches everyone](#mtu-the-part-that-catches-everyone).
 
 ## In the 44Net Connect portal
 
-Two steps at [connect.44net.cloud](https://connect.44net.cloud), before any router work. A
-portal.ampr.org login is required.
+Covered in full in the [44Net Connect introduction](../README.md#-44net-connect--an-introduction),
+including the part the official documentation leaves out. In short:
 
-Generate a WireGuard keypair on your router first — the portal asks for your public key, and
-the private key should never leave the router.
-
-**Tunnels — [connect.44net.cloud/tunnels](https://connect.44net.cloud/tunnels)**
-
-Request a new tunnel, choose a gateway server near you (it carries all your 44net traffic),
-paste your **public key**, and create it. The portal returns a wg-quick configuration with the
-three values the router needs:
-
-| From the portal | Used as |
-|---|---|
-| Gateway public key | the peer's public key |
-| Endpoint address and port | `endpoint-address` / `endpoint-port` |
-| Address for your tunnel interface | a `/32` on the tunnel interface |
-
-**Networks — [connect.44net.cloud/networks](https://connect.44net.cloud/networks)**
-
-Associate your allocated prefix with the tunnel you just created, so the gateway routes it down
-that tunnel to you.
-
-Skipping this produces a confusing result: the tunnel comes up and handshakes normally, but
-nothing is routed to you and your allocation stays unreachable. It looks like a broken tunnel
-and is not.
-
-> The networks page is not covered in the public wiki and the portal requires a login, so the
-> description above is inferred from the resulting configuration rather than from the page.
-> Corrections welcome.
-
-Allocations are requested from [ARDC](https://www.ampr.org/).
+- Generate your WireGuard keypair **on the router** and paste only the public key.
+- **Two** portal steps, not one. *Tunnels* creates the tunnel; *Networks* associates your
+  allocated prefix with it so the gateway routes it to you.
+- Skip the second and the tunnel handshakes perfectly while your allocation stays unreachable —
+  which looks like a broken tunnel and is not.
 
 ## Router configuration
 

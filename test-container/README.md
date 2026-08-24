@@ -10,5 +10,4 @@ Full description: **[../docs/test-container.md](../docs/test-container.md)**
 cp env.example .env && $EDITOR .env
 docker compose build
 docker compose run --rm test     # run the checks
-docker compose run --rm ota      # fetch latest release, push to the device
 ```

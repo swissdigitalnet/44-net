@@ -59,23 +59,53 @@ itself, and independent of whatever your provider hands you this month.
 This part has nothing to do with AREDN. What sits on those addresses is up to you — an AREDN
 node, a remote station, a server.
 
-## 🌐 On the 44Net Connect portal
+## 🌐 44Net Connect — an introduction
 
-Two steps at [connect.44net.cloud](https://connect.44net.cloud), before any router work. You
-need a portal.ampr.org login, and an allocation requested from [ARDC](https://www.ampr.org/) —
-a `/28` gives 13 usable addresses.
+[connect.44net.cloud](https://connect.44net.cloud) is ARDC's own service for delivering 44net
+address space to people who have no way to receive it otherwise. It builds a **WireGuard tunnel
+from your router to a point of presence**, and routes your allocation down it. Free, for
+licensed amateurs, best-effort.
 
-**Generate a WireGuard keypair on your router first.** The portal wants your public key, and
-the private key should never leave the router.
+It is what makes 44net practical from an ordinary house. You do not need a static address, a
+public address, or a cooperative ISP — [it works from behind NAT and
+CGNAT](https://wiki.ampr.org/wiki/44Net_Connect), which is precisely the situation that makes a
+station unreachable in the first place.
 
-### Tunnels — [connect.44net.cloud/tunnels](https://connect.44net.cloud/tunnels)
+**What it is not**, in ARDC's own words: *"The WireGuard tunnel is transport, not cover. It is
+not designed for privacy or anonymity."* It is not a VPN and not an internet replacement. Your
+44net addresses become **publicly routed and publicly scanned** — the point is reachability, and
+that cuts both ways. Hence the firewall section below.
 
-1. Request a new tunnel and select a gateway server. It carries all your 44net traffic, so pick
-   one close to you.
-2. Paste your **public key**.
-3. Create the tunnel.
+### What you need first
 
-The portal returns a wg-quick configuration with the three values your router needs:
+| | |
+|---|---|
+| A 44Net Portal account | [portal.ampr.org](https://portal.ampr.org), with your callsign verified |
+| An allocation | Requested from [ARDC](https://www.ampr.org/). A `/28` gives 13 usable addresses |
+
+**Generate the WireGuard keypair on your router before you start.** The portal will happily hand
+you a complete configuration including a private key, which is convenient and means your private
+key was generated somewhere else and travelled to you. Paste in a public key instead; the
+private key should never leave the device.
+
+### The step the official documentation stops short of
+
+The [Quick Start](https://wiki.ampr.org/wiki/44Net_Connect/Quick_Start) walks you through
+creating a tunnel and ends at "confirm handshake". Follow it exactly and you get **a working
+tunnel with a single address on it** — fine for one laptop, and not what you want if you have an
+allocation to route.
+
+Getting your **prefix** delivered is a second, separate step, and at the time of writing no
+official page describes it. Worse, [Provisioning
+Methods](https://wiki.ampr.org/wiki/Provisioning_Methods) lists "44Net Connect" and
+"BGP-announced subnet" as alternative models, which reads as though a routed prefix over Connect
+is not on offer. It is, and it is the normal case.
+
+So there are **two** things to do in the portal, not one.
+
+**1 · Tunnels.** Request a tunnel, choose a region and endpoint node — it carries all your 44net
+traffic, so pick one near you — name it, and paste your **public key**. The portal returns a
+wg-quick configuration containing the three values your router actually needs:
 
 | From the portal | Used as |
 |---|---|
@@ -83,17 +113,29 @@ The portal returns a wg-quick configuration with the three values your router ne
 | Endpoint address and port | `endpoint-address` / `endpoint-port` |
 | An address for your tunnel interface | a `/32` on the tunnel interface |
 
-### Networks — [connect.44net.cloud/networks](https://connect.44net.cloud/networks)
+**2 · Networks.** Associate your allocated prefix with the tunnel you just created, so the
+gateway routes it down that tunnel to you.
 
-Associate your allocated prefix with the tunnel you just created, so the gateway routes it down
-that tunnel to you.
+**Skipping step 2 is the classic failure.** The tunnel comes up, handshakes on schedule and
+looks perfectly healthy — while nothing is routed to you and your entire allocation stays
+unreachable. It presents as a broken tunnel and is not one. If `wg show` looks good and your
+allocation still answers nothing, check this before you touch anything on the router.
 
-**Do not skip it.** With only the tunnel created, it comes up and handshakes happily while
-nothing is routed to you and your allocation stays unreachable — which looks like a broken
-tunnel and is not.
+> The Networks page needs a login and is not covered by the public wiki, so the description
+> above is inferred from the resulting configuration rather than read off the page. Corrections
+> welcome.
 
-> The networks page is not covered in the public wiki and the portal needs a login, so this is
-> inferred from the resulting configuration rather than from the page. Corrections welcome.
+### Two things it will not tell you
+
+**Your traffic is source-filtered.** The gateway drops packets arriving from you whose source
+address is outside your allocation. Anything your router originates towards 44net — including
+its own ICMP errors — must carry a 44net source or it vanishes silently. This is not documented
+and costs an afternoon to work out. See [return-path.md](docs/return-path.md).
+
+**MTU is never mentioned.** No official page discusses it, and it is the single most common
+reason a correctly built setup fails to pass traffic. It matters the moment anything is tunnelled
+*inside* the gateway tunnel — an AREDN link, most obviously. See
+[the MTU section](#-the-mtu-problem).
 
 ## ⚙️ On the router
 
