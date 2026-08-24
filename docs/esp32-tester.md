@@ -142,6 +142,14 @@ reachability debugging this device exists to make unambiguous.
 
 ## Updating it
 
+**Prove the update path works before you remove the one you already have.**
+This project did the opposite: the push endpoint was deleted in the same
+release that introduced pulling, the pull turned out to be broken, and the
+deployed device was left with no remote update path at all. It had to be
+recovered with a cable. Deploy the new mechanism, confirm a real update lands,
+and only then take the old one away.
+
+
 The device offers the update; something outside initiates it. That keeps the
 44net segment free of any outbound internet permission — see
 [test-container.md](test-container.md), which fetches the latest release and

@@ -444,11 +444,23 @@ static void update_task(void *arg)
     s_updating = true;
     ESP_LOGI(TAG, "update: fetching %s", CONFIG_TESTER_UPDATE_URL);
 
+    /* The buffers are the whole reason this works.
+     *
+     * A release download redirects to a signed storage URL well over a
+     * kilobyte long, and esp_http_client's default 512-byte transmit buffer
+     * cannot write that request line. The symptom is not an error: the client
+     * completes TLS, reads a few kilobytes, then closes the connection and
+     * returns failure, which looks exactly like a network problem and is not.
+     */
     esp_http_client_config_t http = {
-        .url               = CONFIG_TESTER_UPDATE_URL,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .timeout_ms        = 20000,
-        .keep_alive_enable = true,
+        .url                   = CONFIG_TESTER_UPDATE_URL,
+        .crt_bundle_attach     = esp_crt_bundle_attach,
+        .timeout_ms            = 30000,
+        .keep_alive_enable     = true,
+        .buffer_size           = 4096,
+        .buffer_size_tx        = 4096,
+        .disable_auto_redirect = false,
+        .max_redirection_count = 10,
     };
     esp_https_ota_config_t cfg = {
         .http_config = &http,
