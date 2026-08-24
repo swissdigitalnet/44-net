@@ -45,6 +45,12 @@ static arrival_t s_arrivals[ARRIVALS_MAX];
 static SemaphoreHandle_t s_lock;
 static uint32_t s_next_slot;
 
+/* Declared here rather than beside the update code so the status page can
+   report it: a pull that failed silently is indistinguishable from one that
+   was never triggered, and the difference matters when the device is remote. */
+static volatile bool s_updating;
+static char s_update_result[96] = "not attempted";
+
 static void arrival_record(uint8_t proto, uint32_t src_ip, uint16_t src_port, uint16_t dst_port)
 {
     if (!s_lock) {
@@ -252,12 +258,14 @@ static int render_status(char *out, size_t len)
                      "heap=%u\n"
                      "http_port=%d\n"
                      "udp_port=%d\n"
+                     "update=%s\n"
                      "\narrivals (last %d):\n",
                      TESTER_VERSION, ota_state_str(),
                      (unsigned long long)(now / 1000000),
                      netcfg_ip_str(), netcfg_rssi(),
                      (unsigned)esp_get_free_heap_size(),
-                     CONFIG_TESTER_HTTP_PORT, CONFIG_TESTER_UDP_PORT, ARRIVALS_MAX);
+                     CONFIG_TESTER_HTTP_PORT, CONFIG_TESTER_UDP_PORT,
+                     s_update_result, ARRIVALS_MAX);
 
     if (!s_lock) {
         return n;
@@ -430,9 +438,6 @@ static esp_err_t run_get(httpd_req_t *req)
    The cost, which is real: this needs outbound internet from the segment. A
    site that keeps its 44net segment strictly 44net-only cannot use it and
    should flash over serial instead. */
-
-static volatile bool s_updating;
-static char s_update_result[96] = "not attempted";
 
 static void update_task(void *arg)
 {

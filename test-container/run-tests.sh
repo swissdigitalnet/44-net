@@ -56,7 +56,7 @@ discover() {
     tmp="$(mktemp -d)"
     while read -r ip; do
         (
-            if curl -s -m 4 "http://${ip}/" 2>/dev/null | grep -q '^id=esp32-44net-tester'; then
+            if curl -s -m 4 "http://${ip}:${ALLOWED_PORT}/" 2>/dev/null | grep -q '^id=esp32-44net-tester'; then
                 : > "${tmp}/found.${ip}"
             else
                 : > "${tmp}/quiet.${ip}"
@@ -101,7 +101,7 @@ if [[ -z "$UNUSED" ]]; then
     exit 1
 fi
 
-fetch() { curl -s -m "$TIMEOUT" "http://${DEVICE}/"; }
+fetch() { curl -s -m "$TIMEOUT" "http://${DEVICE}:${ALLOWED_PORT}/"; }
 
 # ---------------------------------------------------------------- preflight
 
