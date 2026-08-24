@@ -301,6 +301,7 @@ static esp_err_t status_get(httpd_req_t *req)
     n += render_verdicts(buf + n, 2048 - n);
 
     httpd_resp_set_type(req, "text/plain");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_send(req, buf, n);
     free(buf);
     return ESP_OK;
@@ -331,6 +332,7 @@ static esp_err_t ui_get(httpd_req_t *req)
        handset joined to the same segment. Dark, large type, no horizontal
        scroll, and the one field that matters called out at the top. */
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     httpd_resp_sendstr_chunk(req,
         "<!doctype html><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -386,6 +388,7 @@ static esp_err_t run_get(httpd_req_t *req)
 
     if (accept && strstr(accept, "text/html")) {
         httpd_resp_set_type(req, "text/html");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
         httpd_resp_sendstr_chunk(req,
             "<!doctype html><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -402,6 +405,7 @@ static esp_err_t run_get(httpd_req_t *req)
         httpd_resp_sendstr_chunk(req, NULL);
     } else {
         httpd_resp_set_type(req, "text/plain");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store");
         httpd_resp_send(req, buf, n);
     }
     free(buf);
