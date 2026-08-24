@@ -201,15 +201,38 @@ static esp_err_t ui_get(httpd_req_t *req)
     int n = snprintf(buf, 2048, "you=%s\n", you);
     n += render_status(buf + n, 2048 - n);
 
+    /* Phone-shaped on purpose: this is read standing next to the thing, on a
+       handset joined to the same segment. Dark, large type, no horizontal
+       scroll, and the one field that matters called out at the top. */
     httpd_resp_set_type(req, "text/html");
     httpd_resp_sendstr_chunk(req,
-        "<!doctype html><meta name=viewport content=width=device-width,initial-scale=1>"
+        "<!doctype html><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<meta http-equiv=refresh content=10>"
         "<title>44net tester</title>"
-        "<style>body{font-family:ui-monospace,monospace;margin:2rem}"
-        "pre{margin:0}</style><pre>");
-    httpd_resp_sendstr_chunk(req, buf);
-    httpd_resp_sendstr_chunk(req, "</pre>");
+        "<style>"
+        ":root{color-scheme:dark light}"
+        "body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
+        "margin:0;padding:1.2rem;background:#111;color:#e8e8e8;font-size:15px}"
+        "h1{font-size:1.1rem;margin:0 0 .2rem;color:#8ecbff}"
+        ".you{background:#1c2a38;border-left:3px solid #8ecbff;"
+        "padding:.6rem .8rem;margin:.8rem 0;word-break:break-all}"
+        ".you b{color:#8ecbff}"
+        "pre{margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.5}"
+        "footer{margin-top:1rem;color:#777;font-size:.8rem}"
+        "</style>"
+        "<h1>44net tester</h1>");
+
+    /* The caller's address, first and unmissable - it is the whole point. */
+    httpd_resp_sendstr_chunk(req, "<div class=you><b>you are</b><br>");
+    httpd_resp_sendstr_chunk(req, you);
+    httpd_resp_sendstr_chunk(req, "</div><pre>");
+
+    /* buf still begins with the you= line; skip it, it is shown above. */
+    const char *rest = strchr(buf, '\n');
+    httpd_resp_sendstr_chunk(req, rest ? rest + 1 : buf);
+    httpd_resp_sendstr_chunk(req,
+        "</pre><footer>refreshes every 10 s &middot; plain text at /</footer>");
     httpd_resp_sendstr_chunk(req, NULL);
     free(buf);
     return ESP_OK;

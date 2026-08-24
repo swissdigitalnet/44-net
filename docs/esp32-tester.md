@@ -87,9 +87,25 @@ there is nothing for a firmware update to discard.
 
 ```
 GET  /      text/plain, for curl and for reading
-GET  /ui    the same content as HTML with a meta-refresh
+GET  /ui    the same data, phone-shaped, refreshing every 10 s
 POST /ota   firmware update command
 ```
+
+`/ui` exists to be read on a handset joined to the same segment, standing next
+to the device: dark, large type, no horizontal scroll, and the caller's address
+called out at the top because that is the field worth looking at.
+
+**It is not a captive portal.** The automatic sheet depends on being the DHCP
+server and hijacking DNS, which the device only is while running its own AP. As
+a station it is neither, so you reach `/ui` by typing its address. Its own
+address is on the status page, and the runner in
+[test-container.md](test-container.md) will find it for you.
+
+**Client isolation must be off** on the SSID, or a phone on the same network
+cannot reach it at all — the frames are dropped at the access point before they
+reach the air. That is a deliberate trade: isolation protects an
+internet-exposed device from its neighbours, and turning it off is what lets
+you read the page from a phone.
 
 ```
 you=203.0.113.9:41022
