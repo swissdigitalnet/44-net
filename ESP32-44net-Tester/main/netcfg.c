@@ -23,6 +23,7 @@ static esp_netif_t *s_ap_netif;
 static bool s_ap_started;
 static int  s_retries_left;
 static char s_ip[16] = "0.0.0.0";
+static char s_gw[16] = "0.0.0.0";
 
 static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -30,6 +31,7 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         strcpy(s_ip, "0.0.0.0");
+        strcpy(s_gw, "0.0.0.0");
         if (s_retries_left > 0) {
             s_retries_left--;
             ESP_LOGW(TAG, "join failed, %d attempt(s) left", s_retries_left);
@@ -40,6 +42,7 @@ static void on_wifi(void *arg, esp_event_base_t base, int32_t id, void *data)
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&e->ip_info.ip));
+        snprintf(s_gw, sizeof(s_gw), IPSTR, IP2STR(&e->ip_info.gw));
         ESP_LOGI(TAG, "got %s", s_ip);
         xEventGroupSetBits(s_events, BIT_CONNECTED);
     }
@@ -195,6 +198,7 @@ void netcfg_watch_reset_button(int hold_ms)
 }
 
 const char *netcfg_ip_str(void) { return s_ip; }
+const char *netcfg_gw_str(void) { return s_gw; }
 
 int netcfg_rssi(void)
 {

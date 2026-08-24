@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include "tester.h"
 #include "netcfg.h"
 #include "esp_http_server.h"
@@ -114,6 +115,125 @@ static const char *ota_state_str(void)
     }
 }
 
+/* ---------- verdicts, read off the arrivals ring ----------
+   Still passive: this interprets what already arrived, it does not probe. */
+
+static bool ip_is_44net(uint32_t nip)
+{
+    uint32_t h = ntohl(nip);
+    return (h & 0xFF800000u) == 0x2C000000u ||    /* 44.0.0.0/9   */
+           (h & 0xFFC00000u) == 0x2C800000u;      /* 44.128.0.0/10 */
+}
+
+static bool ip_is_private(uint32_t nip)
+{
+    uint32_t h = ntohl(nip);
+    return (h & 0xFF000000u) == 0x0A000000u ||    /* 10/8     */
+           (h & 0xFFF00000u) == 0xAC100000u ||    /* 172.16/12 */
+           (h & 0xFFFF0000u) == 0xC0A80000u ||    /* 192.168/16 */
+           (h & 0xFFC00000u) == 0x64400000u;      /* 100.64/10 */
+}
+
+static int render_verdicts(char *out, size_t len)
+{
+    bool http_seen = false, udp_seen = false, from_44 = false, from_public = false;
+    int64_t now = esp_timer_get_time(), newest = 0;
+    char newest_src[24] = "-";
+
+    if (s_lock) {
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        for (int i = 0; i < ARRIVALS_MAX; i++) {
+            arrival_t *a = &s_arrivals[i];
+            if (!a->used) continue;
+            if (a->proto == IPPROTO_TCP && a->dst_port == 80)               http_seen = true;
+            if (a->proto == IPPROTO_UDP && a->dst_port == CONFIG_TESTER_UDP_PORT) udp_seen = true;
+            if (ip_is_44net(a->src_ip))                                     from_44 = true;
+            if (!ip_is_private(a->src_ip))                                  from_public = true;
+            if (a->last_us > newest) {
+                struct in_addr in = { .s_addr = a->src_ip };
+                newest = a->last_us;
+                strlcpy(newest_src, inet_ntoa(in), sizeof(newest_src));
+            }
+        }
+        xSemaphoreGive(s_lock);
+    }
+
+    return snprintf(out, len,
+        "observed:\n"
+        "  %s reached on tcp/80\n"
+        "  %s probe on udp/%d\n"
+        "  %s reached from 44net space\n"
+        "  %s caller had a public address (no NAT in the way)\n"
+        "  last caller %s, %llus ago\n",
+        http_seen   ? "yes" : "NO ",
+        udp_seen    ? "yes" : "NO ", CONFIG_TESTER_UDP_PORT,
+        from_44     ? "yes" : "NO ",
+        from_public ? "yes" : "NO ",
+        newest_src,
+        (unsigned long long)(newest ? (now - newest) / 1000000 : 0));
+}
+
+/* ---------- active checks ----------
+   The segment side of docs/test-procedure.md: tests 2, 7 and 8 are things only
+   a host ON the segment can attempt. A TCP connect tells the three cases apart:
+   open (reached and accepted), refused (reached, declined - nothing filtered),
+   blocked (no answer at all - something dropped it). */
+
+static const char *probe_tcp(const char *ip, int port, int timeout_ms)
+{
+    if (!ip || !ip[0] || strcmp(ip, "0.0.0.0") == 0) return "skip";
+
+    int s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s < 0) return "error";
+
+    struct timeval tv = { .tv_sec = timeout_ms / 1000,
+                          .tv_usec = (timeout_ms % 1000) * 1000 };
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(port) };
+    inet_pton(AF_INET, ip, &a.sin_addr);
+
+    errno = 0;
+    int r = connect(s, (struct sockaddr *)&a, sizeof(a));
+    int e = errno;
+    close(s);
+
+    if (r == 0)              return "open";
+    if (e == ECONNREFUSED)   return "refused";
+    return "blocked";
+}
+
+static int render_checks(char *out, size_t len)
+{
+    const char *gw = netcfg_gw_str();
+    int n = snprintf(out, len, "checks (from this device, just now):\n");
+
+    n += snprintf(out + n, len - n, "  %-8s gateway %s:53      expect open\n",
+                  probe_tcp(gw, 53, 1500), gw);
+    n += snprintf(out + n, len - n, "  %-8s gateway %s:22      expect blocked\n",
+                  probe_tcp(gw, 22, 1500), gw);
+#if defined(CONFIG_TESTER_CHECK_44NET)
+    n += snprintf(out + n, len - n, "  %-8s 44net  %s   expect open\n",
+                  probe_tcp(CONFIG_TESTER_CHECK_44NET, 80, 2500),
+                  CONFIG_TESTER_CHECK_44NET ":80");
+#endif
+#if defined(CONFIG_TESTER_CHECK_INTERNAL)
+    n += snprintf(out + n, len - n, "  %-8s internal %s expect blocked\n",
+                  probe_tcp(CONFIG_TESTER_CHECK_INTERNAL, 80, 1500),
+                  CONFIG_TESTER_CHECK_INTERNAL ":80");
+#endif
+#if defined(CONFIG_TESTER_CHECK_INTERNET)
+    n += snprintf(out + n, len - n, "  %-8s internet %s  informational\n",
+                  probe_tcp(CONFIG_TESTER_CHECK_INTERNET, 53, 2500),
+                  CONFIG_TESTER_CHECK_INTERNET ":53");
+#endif
+    n += snprintf(out + n, len - n,
+                  "\n  open = reached and accepted; refused = reached and declined,\n"
+                  "  nothing filtered it; blocked = no answer, something dropped it.\n");
+    return n;
+}
+
 static int render_status(char *out, size_t len)
 {
     int64_t now = esp_timer_get_time();
@@ -220,6 +340,8 @@ static esp_err_t ui_get(httpd_req_t *req)
         ".you b{color:#8ecbff}"
         "pre{margin:0;white-space:pre-wrap;word-break:break-word;line-height:1.5}"
         "footer{margin-top:1rem;color:#777;font-size:.8rem}"
+        "a.btn{display:inline-block;margin-top:1rem;padding:.7rem 1.1rem;"
+        "background:#1c2a38;color:#8ecbff;text-decoration:none;border-radius:6px}"
         "</style>"
         "<h1>44net tester</h1>");
 
@@ -232,8 +354,50 @@ static esp_err_t ui_get(httpd_req_t *req)
     const char *rest = strchr(buf, '\n');
     httpd_resp_sendstr_chunk(req, rest ? rest + 1 : buf);
     httpd_resp_sendstr_chunk(req,
-        "</pre><footer>refreshes every 10 s &middot; plain text at /</footer>");
+        "</pre><a class=btn href=/run>run checks</a>"
+        "<footer>refreshes every 10 s &middot; plain text at /</footer>");
     httpd_resp_sendstr_chunk(req, NULL);
+    free(buf);
+    return ESP_OK;
+}
+
+/* Runs the checks when asked, never on a timer: each one is a real connection
+   attempt and this device is meant to sit still and answer. */
+static esp_err_t run_get(httpd_req_t *req)
+{
+    char *buf = malloc(1024);
+    if (!buf) {
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+    int n = render_checks(buf, 1024);
+
+    const char *accept = NULL;
+    char hdr[64] = { 0 };
+    if (httpd_req_get_hdr_value_str(req, "Accept", hdr, sizeof(hdr)) == ESP_OK) {
+        accept = hdr;
+    }
+
+    if (accept && strstr(accept, "text/html")) {
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_sendstr_chunk(req,
+            "<!doctype html><meta charset=utf-8>"
+            "<meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>checks</title><style>"
+            "body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;"
+            "padding:1.2rem;background:#111;color:#e8e8e8;font-size:15px}"
+            "h1{font-size:1.1rem;margin:0 0 .8rem;color:#8ecbff}"
+            "pre{white-space:pre-wrap;word-break:break-word;line-height:1.5}"
+            "a{display:inline-block;margin-top:1rem;padding:.6rem 1rem;"
+            "background:#1c2a38;color:#8ecbff;text-decoration:none;border-radius:6px}"
+            "</style><h1>checks</h1><pre>");
+        httpd_resp_sendstr_chunk(req, buf);
+        httpd_resp_sendstr_chunk(req, "</pre><a href=/run>run again</a> <a href=/ui>back</a>");
+        httpd_resp_sendstr_chunk(req, NULL);
+    } else {
+        httpd_resp_set_type(req, "text/plain");
+        httpd_resp_send(req, buf, n);
+    }
     free(buf);
     return ESP_OK;
 }
@@ -394,9 +558,11 @@ esp_err_t tester_start(void)
     }
 
     httpd_uri_t u_root = { .uri = "/",   .method = HTTP_GET, .handler = status_get };
-    httpd_uri_t u_ui   = { .uri = "/ui", .method = HTTP_GET, .handler = ui_get };
+    httpd_uri_t u_ui   = { .uri = "/ui",  .method = HTTP_GET, .handler = ui_get };
+    httpd_uri_t u_run  = { .uri = "/run", .method = HTTP_GET, .handler = run_get };
     httpd_register_uri_handler(srv, &u_root);
     httpd_register_uri_handler(srv, &u_ui);
+    httpd_register_uri_handler(srv, &u_run);
 #if CONFIG_TESTER_OTA_ENABLE
     httpd_uri_t u_ota  = { .uri = "/ota", .method = HTTP_POST, .handler = ota_post };
     httpd_register_uri_handler(srv, &u_ota);

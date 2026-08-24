@@ -34,4 +34,5 @@ esp_err_t netcfg_ap_start(const char *ssid);
 void netcfg_watch_reset_button(int hold_ms);
 
 const char *netcfg_ip_str(void);   /* "0.0.0.0" until DHCP completes */
+const char *netcfg_gw_str(void);   /* the DHCP-supplied gateway */
 int netcfg_rssi(void);

@@ -50,4 +50,25 @@ config TESTER_OTA_TOKEN
     default "change-me"
     depends on TESTER_OTA_ENABLE
 
+config TESTER_CHECK_44NET
+    string "A 44net host to try reaching (blank to skip)"
+    default ""
+    help
+      Answers "can this segment reach 44net at all". Tried on tcp/80.
+
+config TESTER_CHECK_INTERNAL
+    string "An internal host that must NOT be reachable (blank to skip)"
+    default ""
+    help
+      Test 7 of docs/test-procedure.md - the rule that makes the segment a DMZ.
+      Tried on tcp/80; a result other than "blocked" means your isolation is
+      not holding.
+
+config TESTER_CHECK_INTERNET
+    string "An internet host to try reaching (blank to skip)"
+    default "1.1.1.1"
+    help
+      Informational: whether the segment has outbound internet. Tried on
+      tcp/53. Either answer can be correct depending on how you scoped egress.
+
 endmenu
