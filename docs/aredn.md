@@ -1,7 +1,8 @@
-# Enabling 44net on an AREDN tunnel server or supernode
+# AREDN tunnel links over 44net
 
-A practical guide for operators. Two quite different things get called "using 44net", and only
-one of them needs any work — so start by deciding which you want.
+A practical guide for operators running an AREDN tunnel server or supernode. Two quite
+different things get called "using 44net", and only one of them needs any work — so start by
+deciding which you want.
 
 ## First: do you actually need this?
 
@@ -210,6 +211,74 @@ crux of the next section.
 way to set tunnel MTU at all; `ip link set dev <iface> mtu 1360` works but is lost on reboot.
 Check your version before promising anyone anything.
 
+## Three ways peers reach your node
+
+You will pass through all three of these in order, and the third is where you will spend most
+of the migration.
+
+**1 · Port forwarding — where you are today**
+
+```
+   peer's AREDN node
+          │  dials YOUR-ISP-ADDRESS : 5525
+          ▼
+   ┌──────────────────────┐
+   │  your router         │   port forward
+   └──────────────────────┘
+          │  translated to a private address
+          ▼
+   ┌──────────────────────┐
+   │  AREDN node          │   192.168.x.y
+   └──────────────────────┘
+```
+
+Ordinary internet at 1500 the whole way, so a peer at AREDN's 1420 default fits comfortably.
+Nothing to tune, works with every firmware version. What it costs: one shared address, a port
+forward per service, and your node never sees who is really calling it.
+
+**2 · Peers dial your 44net address**
+
+```
+   peer's AREDN node                        44net gateway
+          │  dials YOUR-44NET-ADDRESS             │
+          └──────────► internet ──────────────────┘
+                                                  │
+                       WireGuard tunnel, carries your /28
+                                                  ▼
+                                       ┌──────────────────────┐
+                                       │  your router         │
+                                       └──────────────────────┘
+                                                  │
+                                                  ▼
+                                       ┌──────────────────────┐
+                                       │  AREDN node   .2     │
+                                       └──────────────────────┘
+```
+
+The catch: the peer's tunnel now runs *inside* your gateway tunnel. Two layers of
+encapsulation, and the inner one no longer fits. **Both ends** must reduce their tunnel MTU.
+This is the only variant that needs anything from the other operator.
+
+**3 · Both at once — the migration**
+
+```
+   peer not yet ready              peer ready
+          │ dials your ISP address      │ dials your 44net address
+          ▼                             ▼
+   ┌──────────────┐             ┌──────────────────┐
+   │ port forward │             │  gateway tunnel  │
+   └──────────────┘             └──────────────────┘
+          └──────────────┬──────────────┘
+                         ▼
+                 ┌──────────────┐
+                 │  AREDN node  │
+                 └──────────────┘
+```
+
+Both paths live simultaneously and peers move individually. **This is the only sane way to do
+it.** Your own MTU you fix in a minute; your peers' you cannot, and some are on firmware with
+no supported way to set it.
+
 ## Migration strategy
 
 The awkward part is not your node. It is that **each direction is limited by the path it
@@ -281,6 +350,25 @@ back on the old address while you sort it out — that path always works.
   actually regressed. A tunnel that was already broken will look like migration damage.
 - Take a snapshot or backup you can actually restore from.
 
+## If your own connection is behind CGNAT
+
+Everything above assumes replies to a peer can leave by your ordinary WAN. The peer's tunnel
+endpoint is an ordinary internet address, not a 44 address, so replies do **not** match your
+44net routes — they follow the default route out.
+
+On a normal ISP connection that works. The reply leaves carrying its `44.x` source, the path is
+asymmetric, and nobody notices. **On CGNAT it is fatal**: the carrier rewrites the source, the
+peer receives an answer from a machine it never contacted, and discards it. Requests arrive,
+nothing comes back, and every rule you have reads correctly.
+
+The symptom to recognise: a capture on the gateway tunnel shows the peer's packets arriving and
+retrying, while from their side your node looks dead.
+
+The fix is policy routing — mark connections arriving on the tunnel and route the replies back
+into it. It is written out in full, with a worked OpenWrt example and the two subtleties that
+cost the most time, in
+[the return path](remote-station.md#the-return-path-the-part-that-will-defeat-you).
+
 ## A note on dead links
 
 A tunnel that is connected but not routing is not harmless. It still advertises a near-complete
@@ -288,3 +376,52 @@ copy of the mesh at an unusable cost, and your routing daemon re-evaluates all o
 links on one supernode accounted for most of a CPU core and roughly 40% of its routing table.
 
 If a peer is unreachable, disable the tunnel rather than leaving it connected.
+
+## Appendix: a letter to send a peer
+
+Template for asking an existing tunnel partner to move their link from your ISP address to
+your 44net address. Replace the bracketed parts.
+
+The important thing this letter has to achieve is that they set their tunnel MTU **before**
+they repoint. If they repoint first, the tunnel will connect and then silently fail to route,
+which wastes an evening for both of you.
+
+---
+
+**Subject: Moving our AREDN tunnel to 44net — one setting needed at your end**
+
+Hello [name]
+
+My node now has a 44net fixed IP address, and I would like to move our tunnel over to it when it suits
+you. Traffic between us would then run over 44net rather than through my commercial
+internet connection.
+44net is a unique HAM radio IP range. Google for it and read the readme (https://github.com/SensorsIot/44-net) if you are interested in changing your setup, too.
+
+There are three changes you have to make:
+1. upgrade your tunnelserver or Supernode to the newest nightly
+2. go to advanced settings of your tunnel and add MTU 1360
+3. Change the address of my tunnel from <my-tunnel-hostname> to **44.xx.xx.xx** if you connect to my supernode, or **44.xx.xx.xx** if you operate a tunnel server. The port stays the same.
+
+If you do not see the MTU field, your firmware is not on the latest release.
+
+Happy to do it together over a sked if that is easier.
+
+73
+[your callsign]
+
+---
+
+### If they ask why they should bother
+
+Worth having an answer ready, because the honest one is not "it is faster".
+
+Traffic over 44net stays inside amateur radio address space and does not depend on either
+party's commercial provider for its addressing. Some operators care about that; others
+reasonably do not. It costs them one setting and one address change, and it costs you nothing
+if they decline — the old path works either way.
+
+### If they are willing but on old firmware
+
+The MTU setting arrived in a recent AREDN release. Before that there is no supported way to set
+it, only a command that does not survive a reboot. If they cannot update, leave them on the
+port-forward path. It works perfectly well and needs nothing from them.

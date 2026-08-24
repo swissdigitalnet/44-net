@@ -1,11 +1,11 @@
-# 44-net for AREDN
+# 44net for amateur radio
 
 ![AREDN](https://img.shields.io/badge/AREDN-tunnel%20server%20%7C%20supernode-blue)
 ![44net](https://img.shields.io/badge/44net-44.0.0.0%2F8-orange)
-![Router](https://img.shields.io/badge/router-MikroTik%20RouterOS-lightgrey)
+![Router](https://img.shields.io/badge/router-RouterOS%20%7C%20OpenWrt-lightgrey)
 
-Getting 44net address space to your station, and using it to carry AREDN tunnel links. Written
-for operators who want to do the same.
+Getting 44net address space to your station and actually using it. Written by operators who
+have done it, for operators about to.
 
 ## 📻 First — you may need none of this
 
@@ -21,360 +21,76 @@ anything.
 
 ---
 
-Beyond that, two quite different goals get called "using 44net". They stack — the second needs
-the first — but they are worth keeping apart, because the awkward parts belong to the second.
+## 🧭 Which of these are you?
 
-| | Goal | What it involves |
-|---|---|---|
-| **A** | 44net addresses for your station or home network | An allocation, a gateway tunnel, router configuration |
-| **B** | AREDN tunnel links carried over 44net | Everything in A, plus per-peer coordination and an MTU problem |
+Three documents, each complete on its own. Read the one that matches what you are doing — you
+should not need the others.
 
-# A · 44net addresses for your station
+### [→ AREDN tunnel links over 44net](docs/aredn.md)
 
-Your network currently reaches the world through your provider's address. Every service is
-squeezed through a port forward, and your machines never see who is really calling — only your
-router's translated view.
+**You run an AREDN tunnel server or supernode**, and you want peers to reach it at a 44net
+address instead of a port forward on your ISP connection.
 
-44net is address space allocated to licensed amateurs. With a block of your own, a machine at
-your station holds a genuine public address: reachable on its normal ports, addressed as
-itself, and independent of whatever your provider hands you this month.
+Covers the allocation and gateway tunnel, router and firewall configuration, and the two things
+that make this harder than it looks: **MTU**, because your peers' tunnels end up running inside
+your gateway tunnel, and **per-peer migration**, because you can fix your own MTU in a minute
+and theirs not at all. Includes a letter you can send them.
 
-```
-                                    44net gateway
-                                          │
-                    WireGuard tunnel, carries your /28
-                                          ▼
-                              ┌──────────────────────┐
-                              │  your router         │
-                              │  holds 44net .1      │
-                              └──────────────────────┘
-                                          │
-                        ┌─────────────────┴─────────────────┐
-                        ▼                                   ▼
-                ┌──────────────┐                    ┌──────────────┐
-                │  station .2  │                    │  station .3  │
-                └──────────────┘                    └──────────────┘
-```
+### [→ A remote station on 44net](docs/remote-station.md)
 
-This part has nothing to do with AREDN. What sits on those addresses is up to you — an AREDN
-node, a remote station, a server.
+**Your station is somewhere you cannot reach** — a hilltop site, a repeater controller, a node
+in a holiday house — because the connection is behind CGNAT and there is no port to forward.
 
-## 🌐 44Net Connect — an introduction
+Covers giving that station genuine public addresses of its own: the gateway tunnel, a segment
+for the exposed devices, DHCP, firewall and DMZ isolation. Two chapters earn their place —
+**`AllowedIPs` is a source filter**, which silently blocks every non-44net caller if you get it
+wrong, and **the return path**, which is guaranteed to bite you on CGNAT and looks exactly like
+a closed port.
 
-[connect.44net.cloud](https://connect.44net.cloud) is ARDC's own service for delivering 44net
-address space to people who have no way to receive it otherwise. It builds a **WireGuard tunnel
-from your router to a point of presence**, and routes your allocation down it. Free, for
-licensed amateurs, best-effort.
+### [→ Proving it works](docs/testing.md)
 
-It is what makes 44net practical from an ordinary house. You do not need a static address, a
-public address, or a cooperative ISP — [it works from behind NAT and
-CGNAT](https://wiki.ampr.org/wiki/44Net_Connect), which is precisely the situation that makes a
-station unreachable in the first place.
+**You have built one of the above and want evidence**, not a configuration that reads
+correctly.
 
-**What it is not**, in ARDC's own words: *"The WireGuard tunnel is transport, not cover. It is
-not designed for privacy or anonymity."* It is not a VPN and not an internet replacement. Your
-44net addresses become **publicly routed and publicly scanned** — the point is reachability, and
-that cuts both ways. Hence the firewall section below.
-
-### What you need first
-
-| | |
-|---|---|
-| A 44Net Portal account | [portal.ampr.org](https://portal.ampr.org), with your callsign verified |
-| An allocation | Requested from [ARDC](https://www.ampr.org/). A `/28` gives 13 usable addresses |
-
-**Generate the WireGuard keypair on your router before you start.** The portal will happily hand
-you a complete configuration including a private key, which is convenient and means your private
-key was generated somewhere else and travelled to you. Paste in a public key instead; the
-private key should never leave the device.
-
-### The step the official documentation stops short of
-
-The [Quick Start](https://wiki.ampr.org/wiki/44Net_Connect/Quick_Start) walks you through
-creating a tunnel and ends at "confirm handshake". Follow it exactly and you get **a working
-tunnel with a single address on it** — fine for one laptop, and not what you want if you have an
-allocation to route.
-
-Getting your **prefix** delivered is a second, separate step, and at the time of writing no
-official page describes it. Worse, [Provisioning
-Methods](https://wiki.ampr.org/wiki/Provisioning_Methods) lists "44Net Connect" and
-"BGP-announced subnet" as alternative models, which reads as though a routed prefix over Connect
-is not on offer. It is, and it is the normal case.
-
-So there are **two** things to do in the portal, not one.
-
-**1 · Tunnels.** Request a tunnel, choose a region and endpoint node — it carries all your 44net
-traffic, so pick one near you — name it, and paste your **public key**. The portal returns a
-wg-quick configuration containing the three values your router actually needs:
-
-| From the portal | Used as |
-|---|---|
-| Gateway public key | the peer's public key |
-| Endpoint address and port | `endpoint-address` / `endpoint-port` |
-| An address for your tunnel interface | a `/32` on the tunnel interface |
-
-**2 · Networks.** Associate your allocated prefix with the tunnel you just created, so the
-gateway routes it down that tunnel to you.
-
-**Skipping step 2 is the classic failure.** The tunnel comes up, handshakes on schedule and
-looks perfectly healthy — while nothing is routed to you and your entire allocation stays
-unreachable. It presents as a broken tunnel and is not one. If `wg show` looks good and your
-allocation still answers nothing, check this before you touch anything on the router.
-
-> The Networks page needs a login and is not covered by the public wiki, so the description
-> above is inferred from the resulting configuration rather than read off the page. Corrections
-> welcome.
-
-### Two things it will not tell you
-
-**Your traffic is source-filtered.** The gateway drops packets arriving from you whose source
-address is outside your allocation. Anything your router originates towards 44net — including
-its own ICMP errors — must carry a 44net source or it vanishes silently. This is not documented
-and costs an afternoon to work out. See [return-path.md](docs/return-path.md).
-
-**MTU is never mentioned.** No official page discusses it, and it is the single most common
-reason a correctly built setup fails to pass traffic. It matters the moment anything is tunnelled
-*inside* the gateway tunnel — an AREDN link, most obviously. See
-[the MTU section](#-the-mtu-problem).
-
-## ⚙️ On the router
-
-```
-# 1. The gateway tunnel, from the portal's configuration
-/interface/wireguard/add name=<tunnel> private-key="<key>" mtu=<tunnel-mtu> listen-port=<port>
-/interface/wireguard/peers/add interface=<tunnel> public-key="<gateway-key>" \
-    allowed-address=0.0.0.0/0 endpoint-address=<gateway> endpoint-port=<gw-port> \
-    persistent-keepalive=20s
-
-# 2. The gateway's own address must NOT route into the tunnel
-/ip/route/add dst-address=<gateway>/32 gateway=<your-isp-gateway>
-
-# 3. 44net via the tunnel
-/ip/route/add dst-address=44.0.0.0/9    gateway=<tunnel>
-/ip/route/add dst-address=44.128.0.0/10 gateway=<tunnel>
-
-# 4. So your own LAN can reach 44net through it
-/ip/firewall/nat/add chain=srcnat action=masquerade out-interface=<tunnel> \
-    src-address=<your-lan-subnet>
-
-# 5. A VLAN for the 44net segment, router holds .1, DHCP with static leases
-```
-
-Two steps are easy to miss and both fail confusingly:
-
-**Step 2 is not optional.** The gateway's own address lies inside `44.0.0.0/9`, so without a
-more specific route the tunnel's traffic is routed into itself and it dies the moment you add
-step 3.
-
-**Without step 4, 44net becomes *less* reachable than before you started.** Packets from your
-LAN enter the tunnel carrying a private source address that nothing can reply to.
-
-`44.192.0.0/10` is deliberately absent from step 3 — that block was sold and is not 44net.
-
-### Firewall
-
-Your allocation is public space and is scanned continuously from the open internet.
-
-```
-# Allow only what each machine actually serves
-/ip/firewall/filter/add chain=forward action=accept in-interface=<tunnel> \
-    protocol=udp dst-address=<host> dst-port=<ports>
-
-# Drop everything else arriving from the tunnel
-/ip/firewall/filter/add chain=forward action=drop connection-state=new in-interface=<tunnel>
-```
-
-Put both **at the very top of the forward chain**. Any address-based accept rule above them — a
-port forward to a web server, a rule between two of your own subnets — will also match traffic
-from the tunnel, because it was written without the tunnel in mind.
-
-Never use a subnet-wide accept, and do not add the tunnel to your LAN interface list.
+Sends real traffic from outside your network and checks where it lands, including the checks
+that must **fail**. Also covers opening a port for a test and having it close itself again,
+because the step everyone skips is the last one.
 
 ---
 
-# B · AREDN tunnel links over 44net
-
-Everything above gets your node a 44net address. This part is about how **peer nodes reach it**,
-and it is where the coordination and the MTU problem live.
-
-Three variants, and you will pass through all of them in order.
-
-## 1. Port forwarding — where you are today
-
-```
-   peer's AREDN node
-          │
-          │  dials YOUR-PUBLIC-IP : 5525
-          ▼
-   ┌──────────────────────┐
-   │  your router         │   address from your ISP
-   │  port forward        │
-   └──────────────────────┘
-          │  translated to a private address
-          ▼
-   ┌──────────────────────┐
-   │  AREDN node          │   192.168.x.y
-   └──────────────────────┘
-```
-
-Ordinary internet at 1500 the whole way. A peer at AREDN's 1420 default fits comfortably.
-Nothing to tune, works with every firmware version.
-
-**What it costs:** one shared address, a port forward per service, and your node never sees the
-real source address of anyone talking to it.
-
-## 2. Peers dial your 44net address
-
-```
-   peer's AREDN node                        44net gateway
-          │                                       │
-          │  dials YOUR-44NET-ADDRESS             │
-          └──────────► internet ──────────────────┘
-                                                  │
-                       WireGuard tunnel, carries your /28
-                                                  ▼
-                                       ┌──────────────────────┐
-                                       │  your router         │
-                                       └──────────────────────┘
-                                                  │
-                                                  ▼
-                                       ┌──────────────────────┐
-                                       │  AREDN node   .2     │
-                                       └──────────────────────┘
-```
-
-**The catch:** the peer's tunnel now runs *inside* your gateway tunnel. Two layers of
-encapsulation, and the inner one no longer fits. **Both ends** must reduce their tunnel MTU.
-
-This is the only variant that needs anything from the other operator.
-
-## 3. Migration — both at once
-
-```
-   peer not yet ready              peer ready
-          │                             │
-          │ dials your ISP address      │ dials your 44net address
-          ▼                             ▼
-   ┌──────────────┐             ┌──────────────────┐
-   │ port forward │             │  gateway tunnel  │
-   └──────────────┘             └──────────────────┘
-          │                             │
-          └──────────────┬──────────────┘
-                         ▼
-                 ┌──────────────┐
-                 │  AREDN node  │
-                 └──────────────┘
-```
-
-Both paths live simultaneously. Peers move individually once they have set their MTU, and
-anyone who cannot keeps the old path indefinitely.
-
-**This is the only sane way to do it.** Your own MTU you fix in a minute; your peers' you
-cannot, and some are on firmware with no supported way to set it.
-
-## 🖥️ On the AREDN node
-
-| | Variant 1 | Variants 2 & 3 |
-|---|---|---|
-| WAN interface | on your LAN, DHCP | on the 44net VLAN, DHCP |
-| Address | private, from your router | 44net, from a static DHCP lease keyed to its WAN MAC |
-| **Default Tunnel MTU** | default 1420 | **1360** |
-| Anything else | — | nothing |
-
-A static DHCP lease rather than a static address inside AREDN matters: the node keeps
-`proto=dhcp`, nothing in its own configuration changes, and there is nothing for a firmware
-upgrade to discard.
-
-### If the node runs on Proxmox
-
-```bash
-qm snapshot <vmid> pre-44net
-qm set <vmid> -net1 virtio=<mac>,bridge=vmbr0,tag=<44net-vlan>
-```
-
-virtio hot-plugs, so no reboot. The snapshot captures the VM configuration *and* the disk, so
-`qm rollback` undoes both the VLAN change and anything altered inside AREDN in one step.
-
-An AREDN node has three interfaces — LAN, WAN and DtD — bridged internally. **Only the WAN one
-moves.** Bind the DHCP lease to the MAC of the node's **`br-wan` bridge**, not the MAC in the VM
-configuration; AREDN builds its own bridges and it is `br-wan` that requests the lease.
-
-## 📏 The MTU problem
-
-Applies to variants 2 and 3 only. It is what makes them need per-peer coordination.
+## 🔧 Two tools in this repository
 
 | | |
 |---|---|
-| Ordinary internet path | 1500 |
-| Usable inside a WireGuard gateway tunnel | about 1420 |
-| An AREDN tunnel at its 1420 default emits | about 1480 |
+| [`ESP32-44net-Tester/`](ESP32-44net-Tester/README.md) | A small device that holds an address on your segment, answers, and reports **what source address each packet carried** — which is what separates a reachability failure from a translation failure |
+| [`test-container/`](test-container/README.md) | The outside-in half of the test procedure, packaged to re-run after any change. Refuses to run if its own route to the target leaves via a tunnel, so it cannot quietly test from the wrong side |
 
-1480 does not fit in 1420. The failure is silent, because handshake packets are small enough to
-get through: the tunnel connects, looks healthy, and never routes.
+## 🌐 About 44Net Connect
 
-**What you see:** the peer appears in your mesh as a bare MAC address, no hostname, no Babel
-metric.
+[connect.44net.cloud](https://connect.44net.cloud) is ARDC's service for delivering 44net
+address space to people who have no other way to receive it — a WireGuard tunnel from your
+router to a point of presence, with your allocation routed down it. Free, for licensed
+amateurs, and it works from behind NAT and CGNAT.
 
-**How to confirm** — any interface with a live handshake but no Babel neighbour:
+One thing to know before you start, because it is the most common way to lose an evening:
 
-```sh
-wg show all latest-handshakes
-echo dump | socat -T 8 -t 8 UNIX-CLIENT:/var/run/babel.sock - | grep neighbour
-```
+> The official [Quick Start](https://wiki.ampr.org/wiki/44Net_Connect/Quick_Start) ends at
+> "confirm handshake", which leaves you with a tunnel carrying a **single address**. Getting
+> your **allocation** routed to you is a second step — *Networks* in the portal — that no
+> official page describes. Skip it and the tunnel handshakes perfectly while your entire
+> allocation stays unreachable. It looks like a broken tunnel and is not one.
 
-**The fix**, on both ends of every tunnel crossing the gateway. AREDN web interface,
-**Tunnels → Advanced**:
-
-![Default Tunnel MTU field in the AREDN Tunnels dialog](docs/img/tunnel-mtu.png)
-
-> The default packet (MTU) size for all tunnels. This can be set between 1280 and 1420 if your
-> WAN network requires smaller packets than normal. Any change will affect all tunnels.
-> **Remember to change the MTU size at the other end.**
-
-Note AREDN's own warning: *remember to change it at the other end*. That is why migration is
-per-peer.
-
-**Firmware matters.** This field is recent. Older releases have no supported way to set tunnel
-MTU — only `ip link set dev <iface> mtu 1360`, lost at the next reboot. Check before promising
-a peer anything.
-
-## 🤝 Bringing peers across
-
-Per peer, in this order — the order matters:
-
-1. They set **Default Tunnel MTU** to 1360 and let tunnels re-establish.
-2. They repoint the tunnel at your 44net address, same port.
-3. Confirm a Babel neighbour appears with a sensible cost — not just a WireGuard handshake.
-4. Retire the port forward only when everyone has moved. There is no hurry.
-
-[docs/peer-letter.md](docs/peer-letter.md) is a template you can send.
-
-If step 3 shows a handshake with no Babel neighbour, the MTU is still wrong somewhere. Put them
-back on the old address while you work it out.
-
-## ⚠️ Dead tunnels are not free
-
-A tunnel that is connected but not routing still advertises a near-complete copy of the mesh at
-an unusable cost, and your routing daemon re-evaluates all of it. On one supernode, three such
-links accounted for most of a CPU core and roughly 40% of the routing table.
-
-If a peer is unreachable, disable the tunnel rather than leaving it connected.
-
-## 📚 Documentation
-
-| Document | What it covers |
-|---|---|
-| [docs/enabling-44net.md](docs/enabling-44net.md) | Full setup guide with configuration examples |
-| [docs/peer-letter.md](docs/peer-letter.md) | Template letter asking a peer to move |
-| [docs/test-procedure.md](docs/test-procedure.md) | Proving the open paths work and the closed ones do not |
-| [docs/return-path.md](docs/return-path.md) | Getting the answer back out — why inbound works and replies vanish |
-| [docs/esp32-tester.md](docs/esp32-tester.md) | A small purpose-built target to put on the segment and aim at |
-| [docs/test-container.md](docs/test-container.md) | Running the inbound half of the procedure from a container, outside your network |
-| [docs/test-window.md](docs/test-window.md) | Opening a port for a test and having it close itself again |
+Both operating documents above cover the portal in full.
 
 ## 🔗 References
 
 - [AREDN](https://www.arednmesh.org/) — Amateur Radio Emergency Data Network
 - [ARDC](https://www.ampr.org/) — allocates 44net space
 - [44Net Connect](https://wiki.ampr.org/wiki/44Net_Connect) — the WireGuard gateway service
+- [44Net Wiki](https://wiki.ampr.org/wiki/Main_Page)
 - [AREDN issue #2594](https://github.com/aredn/aredn/issues/2594) — the MTU behaviour, still open
+
+## Contributing
+
+Corrections welcome, particularly on the 44Net Connect portal — parts of it are undocumented
+publicly and are described here from observed behaviour rather than from a specification.
