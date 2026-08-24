@@ -19,6 +19,7 @@ head2() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 NETWORK="${NETWORK:-}"
 DEVICE="${DEVICE:-}"
 UNUSED="${UNUSED:-}"
+EXCLUDED="${EXCLUDED:-}"
 UDP_PORT="${UDP_PORT:-5000}"
 ALLOWED_PORT="${ALLOWED_PORT:-80}"
 BLOCKED_PORT="${BLOCKED_PORT:-22}"
@@ -186,17 +187,37 @@ fi
 
 # -------------------------------------------------- 3. allowed port, no host
 
-head2 "3. Outside -> allowed port on an empty address     (test 5)"
+head2 "3a. Outside -> allowed port, address with nothing on it   (test 5)"
+note "does the firewall permit by PORT across the segment, so any device that"
+note "appears there is reachable - rather than only the ones named in a rule?"
 
 out="$(nc -nzv -w "$TIMEOUT" "$UNUSED" "$ALLOWED_PORT" 2>&1)"
 if grep -qi 'no route to host' <<<"$out"; then
-    ok "'No route to host' - the router accepted it and found nothing there"
-    note "this error IS the success condition: the firewall did its job"
+    ok "'No route to host' - accepted, delivery attempted, nobody home"
+    note "this error IS the success condition: any device on the segment is reachable"
 elif grep -qiE 'succeeded|open' <<<"$out"; then
     bad "something answered on ${UNUSED}:${ALLOWED_PORT} - that address should be empty"
 else
-    bad "silent timeout - the packet was dropped before reaching the segment"
-    note "expected acceptance then failure to deliver; got neither"
+    bad "silent timeout - the packet never reached the segment"
+    note "the accept rule is scoped to particular addresses rather than the range,"
+    note "so a device that joins later will be unreachable until you edit the rule"
+fi
+
+# ------------------------------------------------- 3b. deliberately excluded
+
+if [[ -n "$EXCLUDED" ]]; then
+    head2 "3b. Outside -> allowed port, host that must NOT be reachable"
+    note "the opposite check: a host you have deliberately kept off 44net"
+
+    out="$(nc -nzv -w "$TIMEOUT" "$EXCLUDED" "$ALLOWED_PORT" 2>&1)"
+    if grep -qiE 'succeeded|open' <<<"$out"; then
+        bad "${EXCLUDED}:${ALLOWED_PORT} answered - it is reachable from 44net"
+    elif grep -qi 'no route to host' <<<"$out"; then
+        bad "'No route to host' - the router ACCEPTED this and only found nobody there"
+        note "nothing is excluding it; the moment a device takes that address it is exposed"
+    else
+        ok "silent - excluded from 44net as intended"
+    fi
 fi
 
 # ------------------------------------------------------- 4. blocked inbound

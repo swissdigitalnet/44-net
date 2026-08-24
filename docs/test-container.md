@@ -86,13 +86,28 @@ docker compose run --rm test
 | Outside → allowed port | 4 | device answers, and its `you=` matches your real address |
 | Outside → allowed UDP port | 4 | probe appears in the device's arrivals list |
 | Outside → allowed port, empty address | 5 | `No route to host` |
+| Outside → allowed port, excluded host | 5 | silent timeout |
 | Outside → blocked port | 6 | silent timeout |
 
 Two of those results are counter-intuitive and worth restating, because the
 procedure makes the same point:
 
-**`No route to host` is a pass.** The router accepted the packet, tried to
-deliver it on the segment, and found nothing there. The firewall did its job.
+**`No route to host` is a pass** on an empty address. The router accepted the
+packet, tried to deliver it on the segment, and found nothing there — which
+means the rule permits by **port across the range**, so any device that appears
+on the segment later is reachable without editing firewall rules. A silent
+timeout here means the opposite: the accepts are pinned to particular
+addresses, and a device that joins tomorrow will be invisible until someone
+remembers to widen them.
+
+**The same result is a failure on an excluded host.** Set `EXCLUDED` to an
+address you have deliberately kept off 44net and test 3b checks it stays that
+way. `No route to host` there means nothing is excluding it — the router
+accepted the packet and merely found nobody home, so the moment a device takes
+that address it is exposed. Only silence proves exclusion.
+
+The two are the same probe against different addresses, and between them they
+show that the firewall discriminates by address as well as by port.
 
 **Silence is a pass, on a blocked port.** A refusal would tell a scanner
 something is there. If a blocked port answers `No route to host` instead, your
