@@ -209,28 +209,30 @@ static int render_checks(char *out, size_t len)
     const char *gw = netcfg_gw_str();
     int n = snprintf(out, len, "checks (from this device, just now):\n");
 
-    n += snprintf(out + n, len - n, "  %-8s gateway %s:53      expect open\n",
+    n += snprintf(out + n, len - n, "  %-8s  gateway %s:53   want open\n",
                   probe_tcp(gw, 53, 1500), gw);
-    n += snprintf(out + n, len - n, "  %-8s gateway %s:22      expect blocked\n",
+    n += snprintf(out + n, len - n, "  %-8s  gateway %s:22   want blocked on a DMZ\n",
                   probe_tcp(gw, 22, 1500), gw);
 #if defined(CONFIG_TESTER_CHECK_44NET)
-    n += snprintf(out + n, len - n, "  %-8s 44net  %s   expect open\n",
+    n += snprintf(out + n, len - n, "  %-8s  44net %s   want open\n",
                   probe_tcp(CONFIG_TESTER_CHECK_44NET, 80, 2500),
                   CONFIG_TESTER_CHECK_44NET ":80");
 #endif
 #if defined(CONFIG_TESTER_CHECK_INTERNAL)
-    n += snprintf(out + n, len - n, "  %-8s internal %s expect blocked\n",
+    n += snprintf(out + n, len - n, "  %-8s  internal %s   want blocked on a DMZ\n",
                   probe_tcp(CONFIG_TESTER_CHECK_INTERNAL, 80, 1500),
                   CONFIG_TESTER_CHECK_INTERNAL ":80");
 #endif
 #if defined(CONFIG_TESTER_CHECK_INTERNET)
-    n += snprintf(out + n, len - n, "  %-8s internet %s  informational\n",
+    n += snprintf(out + n, len - n, "  %-8s  internet %s   depends on your egress policy\n",
                   probe_tcp(CONFIG_TESTER_CHECK_INTERNET, 53, 2500),
                   CONFIG_TESTER_CHECK_INTERNET ":53");
 #endif
     n += snprintf(out + n, len - n,
                   "\n  open = reached and accepted; refused = reached and declined,\n"
-                  "  nothing filtered it; blocked = no answer, something dropped it.\n");
+                  "  nothing filtered it; blocked = no answer, something dropped it.\n"
+                  "  \"want\" assumes an isolated 44net segment. On an ordinary LAN\n"
+                  "  several of these read open, and that is correct there.\n");
     return n;
 }
 
@@ -295,6 +297,8 @@ static esp_err_t status_get(httpd_req_t *req)
 
     int n = snprintf(buf, 2048, "you=%s\n", you);
     n += render_status(buf + n, 2048 - n);
+    n += snprintf(buf + n, 2048 - n, "\n");
+    n += render_verdicts(buf + n, 2048 - n);
 
     httpd_resp_set_type(req, "text/plain");
     httpd_resp_send(req, buf, n);
@@ -320,6 +324,8 @@ static esp_err_t ui_get(httpd_req_t *req)
     }
     int n = snprintf(buf, 2048, "you=%s\n", you);
     n += render_status(buf + n, 2048 - n);
+    n += snprintf(buf + n, 2048 - n, "\n");
+    n += render_verdicts(buf + n, 2048 - n);
 
     /* Phone-shaped on purpose: this is read standing next to the thing, on a
        handset joined to the same segment. Dark, large type, no horizontal
