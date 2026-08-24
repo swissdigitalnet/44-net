@@ -192,15 +192,19 @@ note "does the firewall permit by PORT across the segment, so any device that"
 note "appears there is reachable - rather than only the ones named in a rule?"
 
 out="$(nc -nzv -w "$TIMEOUT" "$UNUSED" "$ALLOWED_PORT" 2>&1)"
-if grep -qi 'no route to host' <<<"$out"; then
-    ok "'No route to host' - accepted, delivery attempted, nobody home"
-    note "this error IS the success condition: any device on the segment is reachable"
-elif grep -qiE 'succeeded|open' <<<"$out"; then
+if grep -qiE 'succeeded|open' <<<"$out"; then
     bad "something answered on ${UNUSED}:${ALLOWED_PORT} - that address should be empty"
+elif grep -qi 'no route to host' <<<"$out"; then
+    ok "'No route to host' - accepted, delivery attempted, nobody home"
+    note "this proves the rule permits by port across the range. Note the cost:"
+    note "the router emitted an ICMP error to the internet, which tells a scanner"
+    note "the range is accepted and that address is empty. Silence leaks less."
 else
-    bad "silent timeout - the packet never reached the segment"
-    note "the accept rule is scoped to particular addresses rather than the range,"
-    note "so a device that joins later will be unreachable until you edit the rule"
+    ok "silent - an empty address is indistinguishable from a blocked one"
+    note "this test cannot confirm range-wide reachability without the router"
+    note "emitting ICMP errors outward, and silence is the better trade."
+    note "To verify it properly, put a second device on the segment: if it is"
+    note "reachable without a rule change, the rule covers the range."
 fi
 
 # ------------------------------------------------- 3b. deliberately excluded

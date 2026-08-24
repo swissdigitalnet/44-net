@@ -85,7 +85,19 @@ Expect `No route to host` and the accept counter to rise. That error is the **su
 condition — the router accepted the packet, tried to deliver it on the segment, and found
 nothing there. The firewall did its job.
 
+**But note what it costs.** Producing that error means the router answers the
+internet about addresses nobody is using, which tells a scanner which parts of
+your allocation are live. If you would rather not say, suppress it and accept
+that this test can no longer distinguish "accepted but empty" from "dropped" —
+see [return-path.md](return-path.md). Silence leaks less than a passing test.
+
 ## Paths that must fail
+
+**If a test below shows the request arriving but nothing coming back**, stop and
+read [return-path.md](return-path.md). Replies to a caller outside 44net do not
+match your 44net routes, so they leave by the default route — and if that path
+does NAT, as cellular does, the answer never reaches the caller. It looks like a
+closed port and is not.
 
 ### 6. Blocked ports from outside
 
