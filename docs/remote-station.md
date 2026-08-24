@@ -211,7 +211,19 @@ design, so it must not share a broadcast domain with the machines that are not.
 That separation is what the isolation rule below enforces, and you cannot
 enforce it if they are on the same bridge.
 
-**Give each device a static DHCP lease rather than a static address:**
+### Which devices need a fixed address, and which do not
+
+The reflex is to pin everything with a static DHCP lease. Resist it — the
+question is whether **anything outside this router has to name the address**.
+
+| | Fixed address? |
+|---|---|
+| Something peers dial, or that has a DNS record | **Yes.** Its address is part of an agreement with the outside world |
+| Something covered by a per-host firewall rule | **Yes.** The rule names it |
+| Everything else — a test target, a device you go and find | **No.** Let it take a pool address |
+
+For the first two, a **static lease keyed to the MAC**, not a static address
+configured on the device:
 
 ```sh
 uci add dhcp host
@@ -220,9 +232,18 @@ uci set dhcp.@host[-1].ip='44.xx.yy.72'
 uci set dhcp.@host[-1].name='station-pc'
 ```
 
-The address, the reservation and the firewall rule then all live in one place —
-the router. Nothing on the device is site-specific, so a rebuild, a firmware
-upgrade or a swapped SD card does not lose its addressing.
+The address, the reservation and the rule then live in one place — the router.
+Nothing on the device is site-specific, so a rebuild, a firmware upgrade or a
+swapped SD card does not lose its addressing.
+
+**For the third, a lease is a liability.** It is the only thing that makes
+replacing hardware require router access: plug in a new board and it silently
+lands somewhere other than where your notes say it lives, until someone edits
+the reservation. If your accept rules are scoped to the segment rather than to
+one host — which is the usual choice on a small allocation — the fixed address
+was buying nothing anyway. Find the device instead; a `/28` is thirteen
+addresses and the runner in [the test container](../test-container/README.md)
+sweeps it in seconds.
 
 ## The return path: the part that will defeat you
 

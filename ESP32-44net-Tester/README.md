@@ -76,14 +76,23 @@ its own.
 
 ## Addressing
 
-**DHCP.** The firmware carries no addresses. Give it a fixed address with a
-static lease on the router, keyed to its MAC, so the address, the reservation
-and the firewall rule all live in one place. A static lease may sit inside or
-outside the pool.
+**DHCP, and usually nothing more.** The firmware carries no addresses.
 
-This is the same argument [the AREDN guide](../docs/aredn.md) makes for
-AREDN nodes: nothing in the device's own configuration is site-specific, and
-there is nothing for a firmware update to discard.
+It is tempting to pin it with a static lease on the router, and for most things
+on a 44net segment that is right — see [which devices need a fixed
+address](../docs/remote-station.md#which-devices-need-a-fixed-address-and-which-do-not).
+**This device is the exception.** Nothing outside names its address: you find
+it by sweeping the range and recognising the `id=` it reports about itself, and
+the accept rules on a small allocation are normally scoped to the segment
+rather than to one host.
+
+A reservation would buy you nothing and cost you something real — it is the
+only reason swapping the board would need router access as well as physical
+access, and a replacement that lands on an unexpected address is exactly the
+failure the reservation was supposed to prevent.
+
+Pin it only if a per-host firewall rule names it. Then the rule and the
+reservation must move together.
 
 ## What it serves
 
