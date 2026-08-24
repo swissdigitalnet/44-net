@@ -81,7 +81,7 @@ static lease on the router, keyed to its MAC, so the address, the reservation
 and the firewall rule all live in one place. A static lease may sit inside or
 outside the pool.
 
-This is the same argument [enabling-44net.md](../docs/aredn.md) makes for
+This is the same argument [the AREDN guide](../docs/aredn.md) makes for
 AREDN nodes: nothing in the device's own configuration is site-specific, and
 there is nothing for a firmware update to discard.
 
@@ -98,7 +98,7 @@ All four are on **`CONFIG_TESTER_HTTP_PORT`, default 8044** — deliberately not
 80. Port 80 is the most heavily scanned port on the internet and a 44net
 allocation is public space. This is not concealment and it is not a substitute
 for keeping the port closed except during a test; see
-[test-window.md](../docs/testing.md#opening-a-port-for-the-test-and-closing-it-again).
+[the test-window section of testing.md](../docs/testing.md#opening-a-port-for-the-test-and-closing-it-again).
 
 `/ui` exists to be read on a handset joined to the same segment, standing next
 to the device: dark, large type, no horizontal scroll, and the caller's address
@@ -108,7 +108,7 @@ called out at the top because that is the field worth looking at.
 server and hijacking DNS, which the device only is while running its own AP. As
 a station it is neither, so you reach `/ui` by typing its address. Its own
 address is on the status page, and the runner in
-[test-container.md](../test-container/README.md) will find it for you.
+[the test container](../test-container/README.md) will find it for you.
 
 **Client isolation must be off** on the SSID, or a phone on the same network
 cannot reach it at all — the frames are dropped at the access point before they
@@ -212,7 +212,7 @@ accept  in-interface=<tunnel>  dst-address=<device>  proto=udp  dst-port=<udp-po
 
 **And only while you are testing.** These are not permanent rules. Add them for
 a session, remove them after, and confirm from outside that they are gone —
-[test-window.md](../docs/testing.md#opening-a-port-for-the-test-and-closing-it-again) is that discipline written down. Updating the
+[the test-window section of testing.md](../docs/testing.md#opening-a-port-for-the-test-and-closing-it-again) is that discipline written down. Updating the
 device needs no rule at all, because it pulls.
 
 Never a subnet-wide accept, and do not add the segment to your LAN interface

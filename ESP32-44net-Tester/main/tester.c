@@ -183,7 +183,7 @@ static int render_verdicts(char *out, size_t len)
 }
 
 /* ---------- active checks ----------
-   The segment side of docs/test-procedure.md: tests 2, 7 and 8 are things only
+   The segment side of docs/testing.md: tests 2, 7 and 8 are things only
    a host ON the segment can attempt. A TCP connect tells the three cases apart:
    open (reached and accepted), refused (reached, declined - nothing filtered),
    blocked (no answer at all - something dropped it). */
@@ -510,7 +510,7 @@ static esp_err_t update_get(httpd_req_t *req)
 #endif
 
 /* ---------- UDP listener ----------
-   Answers test 4 of docs/test-procedure.md, which sends a UDP probe to an
+   Answers test 4 of docs/testing.md, which sends a UDP probe to an
    allowed port. Without this the operator still needs tcpdump on the segment. */
 
 static void udp_task(void *arg)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the parts of docs/test-procedure.md that can be driven from outside.
+# Runs the parts of docs/testing.md that can be driven from outside.
 #
 # Every check sends real traffic and reads the result back from the device.
 # Reading configuration is not proof; this is.
@@ -233,7 +233,7 @@ if grep -qiE 'succeeded|open' <<<"$out"; then
     bad "port ${BLOCKED_PORT} is reachable from the internet"
 elif grep -qi 'no route to host' <<<"$out"; then
     bad "got 'No route to host' - the firewall ACCEPTED this port, it should drop it"
-    note "contrast with test 3: acceptance leaks the fact that the port is open"
+    note "contrast with 3a above: acceptance leaks the fact that the port is open"
 elif grep -qiE 'refused|reset' <<<"$out"; then
     # A reset means the packet reached a host that declined it - nothing was
     # filtered. Reporting that as a pass would credit the firewall for a result

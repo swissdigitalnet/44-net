@@ -430,8 +430,8 @@ Do it before you rely on the station, and again after any firewall change.
 ## Operating notes
 
 **Ports are opened for tests and closed afterwards.** The normal state is
-everything closed except what the station serves. See the test-window section
-of [testing.md](testing.md).
+everything closed except what the station serves. See
+[opening a port for the test](testing.md#opening-a-port-for-the-test-and-closing-it-again).
 
 **Expect the scanning.** In a twenty-second capture on a quiet `/28`, an
 address that had never been used was already being probed on `:443` and `:23`.

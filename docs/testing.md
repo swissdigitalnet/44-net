@@ -225,7 +225,7 @@ that catches a `reload` that silently failed, and it takes six seconds.
 
 ```
 1. open the window, scoped to the machine you are testing from
-2. run the procedure — docs/test-procedure.md, or the container
+2. run the checks below, or the container
 3. read the results off the device
 4. close the window
 5. confirm from outside that it is closed

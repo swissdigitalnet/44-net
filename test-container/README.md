@@ -101,7 +101,7 @@ appears later is reachable without touching the firewall.
 But producing that error means the router answers the internet about addresses
 nobody is using, which hands a scanner a map of which parts of your allocation
 are live. That disclosure is not worth a passing test, so the deliberate choice
-here is silence — see [return-path.md](../docs/remote-station.md#the-return-path-the-part-that-will-defeat-you) for what is suppressed
+here is silence — see [the return path](../docs/remote-station.md#the-return-path-the-part-that-will-defeat-you) for what is suppressed
 and why. The runner accepts silence and says plainly that it cannot confirm
 range-wide reachability from outside. To confirm it, put a second device on the
 segment and see whether it is reachable without a rule change.
@@ -141,7 +141,7 @@ network, since there is no NAT between you to detect.
 Tests 1, 2, 3, 7, 8 and 9 of the procedure — the ones run *from* the router or
 *from* the segment. Those need a shell on the router, or a host on the segment
 that can originate traffic. The passive target described in
-[esp32-tester.md](../ESP32-44net-Tester/README.md) deliberately does not probe, so the
+[the ESP32 tester](../ESP32-44net-Tester/README.md) deliberately does not probe, so the
 must-fail direction still has to be checked by hand.
 
 Run those after any firewall change. This container covers the inbound half.
@@ -157,7 +157,7 @@ to it, so there is no update port to open, nothing to scope to this host's
 address, and no bearer token crossing plaintext HTTP. Trigger it with
 `GET /update` **from the segment** — the device refuses callers that are not on
 it, so an update cannot be started from the internet even during a test window.
-See [esp32-tester.md](../ESP32-44net-Tester/README.md).
+See [the ESP32 tester](../ESP32-44net-Tester/README.md).
 
 The sequencing lesson is recorded there too, because it cost a site visit: the
 push endpoint was removed in the same release that introduced pulling, before

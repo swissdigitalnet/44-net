@@ -6,7 +6,7 @@
 
    The device answers; it never probes. Everything it reports is something that
    arrived at it, which is what makes it usable as the "something on the 44net
-   segment to aim at" that docs/test-procedure.md calls for. */
+   segment to aim at" that docs/testing.md calls for. */
 esp_err_t tester_start(void);
 
 /* Runs in the background. Marks the running image valid only once WiFi is up

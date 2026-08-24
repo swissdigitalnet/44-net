@@ -1,7 +1,7 @@
 /* 44net reachability tester - passive target.
  *
  * It answers; it never probes. Its job is to be the "something on the 44net
- * segment to aim at" that docs/test-procedure.md requires, and to report what
+ * segment to aim at" that docs/testing.md requires, and to report what
  * actually arrived - in particular the source address the caller presented,
  * which is the thing that makes an asymmetric or translated path visible
  * instead of silent.
